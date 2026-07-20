@@ -1,4 +1,4 @@
-"""Knowledge base service."""
+"""知识库 service。"""
 from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession

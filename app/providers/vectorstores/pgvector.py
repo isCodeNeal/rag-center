@@ -1,8 +1,8 @@
-"""pgvector-backed VectorStore.
+"""基于 pgvector 实现的 VectorStore。
 
-Thin adapter over ChunkRepository: it keeps all raw DB access in the repository layer
-while exposing the store-agnostic VectorStore contract to services. Cosine similarity
-is used; score = 1 - cosine_distance.
+作为 ChunkRepository 的一层薄适配器：把所有原始 DB 访问都留在 repository 层，
+对外向 service 暴露与具体存储无关的 VectorStore 契约。这里使用 cosine similarity，
+score = 1 - cosine_distance。
 """
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ class PgVectorStore(VectorStore):
             return
         try:
             await self._chunks.bulk_insert(chunks)
-        except Exception as exc:  # noqa: BLE001 - surface as domain error
+        except Exception as exc:  # noqa: BLE001 - 转换为业务异常抛出
             logger.error("pgvector add_chunks failed: %s", exc)
             raise VectorStoreError(f"failed to write chunks to pgvector: {exc}")
 

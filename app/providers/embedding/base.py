@@ -1,8 +1,7 @@
-"""EmbeddingProvider abstraction.
+"""EmbeddingProvider 抽象接口。
 
-Business/service code depends only on this interface, never on a concrete model
-vendor. Swap in other providers (Azure, local, Cohere-compatible) without touching
-the indexing or retrieval services.
+业务/service 代码只依赖这个接口，永远不直接依赖具体的模型厂商。可以替换成其它
+provider（Azure、本地部署、Cohere 兼容等），而无需改动 indexing 或 retrieval 服务。
 """
 from __future__ import annotations
 
@@ -13,21 +12,21 @@ class EmbeddingProvider(ABC):
     @property
     @abstractmethod
     def model(self) -> str:
-        """Name of the underlying embedding model."""
+        """底层使用的 embedding 模型名称。"""
         raise NotImplementedError
 
     @property
     @abstractmethod
     def dimension(self) -> int:
-        """Vector dimension produced by this provider."""
+        """该 provider 产出的向量维度。"""
         raise NotImplementedError
 
     @abstractmethod
     async def embed_texts(self, texts: list[str]) -> list[list[float]]:
-        """Embed a batch of texts (e.g. document chunks)."""
+        """对一批文本（例如文档 chunk）进行 embedding。"""
         raise NotImplementedError
 
     @abstractmethod
     async def embed_query(self, text: str) -> list[float]:
-        """Embed a single query string."""
+        """对单条查询字符串进行 embedding。"""
         raise NotImplementedError

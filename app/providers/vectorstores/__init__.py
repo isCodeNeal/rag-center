@@ -1,1 +1,1 @@
-"""Vector stores."""
+"""向量存储（vector store）实现。"""

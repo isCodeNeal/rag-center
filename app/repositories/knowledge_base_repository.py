@@ -1,4 +1,4 @@
-"""KnowledgeBase data access."""
+"""KnowledgeBase 数据访问。"""
 from __future__ import annotations
 
 from sqlalchemy import select

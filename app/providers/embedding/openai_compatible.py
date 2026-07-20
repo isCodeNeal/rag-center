@@ -1,11 +1,11 @@
-"""OpenAI-compatible embedding provider.
+"""OpenAI 兼容的 embedding provider。
 
-Calls a POST {base_url}/embeddings endpoint that follows the OpenAI embeddings API
-shape. Works with OpenAI and any compatible gateway (vLLM, Ollama's OpenAI shim,
-Azure-style proxies, etc.).
+调用符合 OpenAI embeddings API 格式的 POST {base_url}/embeddings 接口。可用于
+OpenAI 本身，也可用于任何兼容的网关（vLLM、Ollama 的 OpenAI shim、Azure 风格的
+代理等）。
 
-Every call is wrapped with LLM interaction logs (LLM_REQUEST / LLM_RESPONSE /
-LLM_ERROR) and maps HTTP failures to细化的错误码（超时 / 限流 / 其它）。
+每次调用都会记录 LLM 交互日志（LLM_REQUEST / LLM_RESPONSE / LLM_ERROR），并将
+HTTP 失败映射为细化的错误码（超时 / 限流 / 其它）。
 """
 from __future__ import annotations
 
@@ -83,7 +83,7 @@ class OpenAICompatibleEmbeddingProvider(EmbeddingProvider):
 
         cost = (time.perf_counter() - start) * 1000
         try:
-            # Preserve input order (OpenAI returns an "index" per item).
+            # 保持输入顺序（OpenAI 会为每个 item 返回一个 "index"）
             items = sorted(body["data"], key=lambda d: d["index"])
             vectors = [item["embedding"] for item in items]
         except (KeyError, TypeError) as exc:

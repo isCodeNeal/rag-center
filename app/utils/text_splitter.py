@@ -1,8 +1,8 @@
-"""Text splitting.
+"""文本切分。
 
-`TextSplitter` is an abstraction so the chunking strategy can evolve (token-based,
-recursive, semantic) without touching the indexing service. Stage 1 ships a simple
-character-window splitter driven by CHUNK_SIZE / CHUNK_OVERLAP.
+`TextSplitter` 是一层抽象，使得分块策略可以持续演进（基于 token、递归、语义等），
+而不必改动 indexing service。第一阶段提供一个简单的、由 CHUNK_SIZE / CHUNK_OVERLAP
+驱动的字符窗口切分器。
 """
 from __future__ import annotations
 
@@ -14,15 +14,15 @@ from app.core.config import settings
 class TextSplitter(ABC):
     @abstractmethod
     def split(self, text: str) -> list[str]:
-        """Split raw text into an ordered list of non-empty chunks."""
+        """将原始文本切分为一个有序的非空 chunk 列表。"""
         raise NotImplementedError
 
 
 class CharacterTextSplitter(TextSplitter):
-    """Fixed-size sliding window over characters with overlap.
+    """按字符的固定大小滑动窗口切分，窗口之间带重叠。
 
-    Good enough for the stage-1 closed loop and easy to reason about. Swap for a
-    token-aware or recursive splitter later behind the same interface.
+    对于第一阶段跑通闭环来说已经够用，逻辑也容易理解。后续可以在同一接口背后
+    换成 token-aware 或递归式的切分器。
     """
 
     def __init__(self, chunk_size: int | None = None, chunk_overlap: int | None = None):

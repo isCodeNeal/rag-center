@@ -1,7 +1,7 @@
-"""Chunk data access, including pgvector similarity search.
+"""Chunk 数据访问，包括基于 pgvector 的相似度检索。
 
-This repository owns the pgvector-specific SQL (cosine distance ordering). The
-PgVectorStore adapter delegates here so raw DB access stays in the repository layer.
+pgvector 相关的 SQL（按 cosine distance 排序）由这个 repository 负责。PgVectorStore
+适配器把调用委托到这里，从而保证原始 DB 访问始终留在 repository 层。
 """
 from __future__ import annotations
 
@@ -18,8 +18,8 @@ class ChunkRepository:
         self._session = session
 
     async def bulk_insert(self, chunks: list[dict[str, Any]]) -> None:
-        """Insert chunk rows. Each dict carries id/tenant_id/kb_id/document_id/
-        title/content/metadata/embedding."""
+        """插入 chunk 行。每个 dict 包含 id/tenant_id/kb_id/document_id/
+        title/content/metadata/embedding。"""
         objects = [
             Chunk(
                 id=c["id"],
@@ -44,7 +44,7 @@ class ChunkRepository:
         kb_id: str,
         top_k: int = 5,
     ) -> list[dict[str, Any]]:
-        # Cosine distance in [0, 2]; similarity score = 1 - distance.
+        # cosine distance 取值范围 [0, 2]；similarity score = 1 - distance
         distance = Chunk.embedding.cosine_distance(query_vector).label("distance")
         stmt = (
             select(Chunk, distance)

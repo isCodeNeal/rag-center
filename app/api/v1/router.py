@@ -1,4 +1,4 @@
-"""API v1 aggregate router."""
+"""API v1 聚合路由。"""
 from __future__ import annotations
 
 from fastapi import APIRouter

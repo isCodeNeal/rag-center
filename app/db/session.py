@@ -1,4 +1,4 @@
-"""Async SQLAlchemy engine and session factory."""
+"""异步 SQLAlchemy engine 和 session factory。"""
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
@@ -27,6 +27,6 @@ SessionLocal = async_sessionmaker(
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    """FastAPI dependency yielding a request-scoped async session."""
+    """FastAPI 依赖项，生成请求范围（request-scoped）的异步 session。"""
     async with SessionLocal() as session:
         yield session

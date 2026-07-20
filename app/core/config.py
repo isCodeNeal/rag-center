@@ -1,7 +1,7 @@
-"""Application configuration.
+"""应用配置。
 
-All tunables (model endpoint, vector store, chunking params) are loaded from the
-environment / .env so nothing model- or store-specific is hard-coded in business code.
+所有可调参数（模型端点、向量库、分块参数）均从环境变量 / .env 加载，
+业务代码中不硬编码任何与具体模型或存储相关的内容。
 """
 from __future__ import annotations
 
@@ -18,11 +18,11 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    # ----- Application -----
+    # ----- 应用 -----
     app_env: str = "local"
     app_name: str = "rag-center"
 
-    # ----- Logging -----
+    # ----- 日志 -----
     log_level: str = "INFO"
     log_dir: str = "logs"
     log_to_file: bool = True
@@ -30,31 +30,31 @@ class Settings(BaseSettings):
     log_backup_count: int = 10  # 最多保留 10 个历史文件
     log_request_body: bool = True  # 是否记录请求/响应体（生产可关闭以降噪/脱敏）
 
-    # ----- Database -----
+    # ----- 数据库 -----
     database_url: str = (
         "postgresql+psycopg://postgres:postgres@localhost:5432/rag_center"
     )
 
-    # ----- Embedding provider (OpenAI-compatible) -----
+    # ----- Embedding 提供方（OpenAI 兼容）-----
     model_base_url: str = "https://api.openai.com/v1"
     model_api_key: str = "your-api-key"
     embedding_model: str = "text-embedding-3-small"
     embedding_dim: int = 1536
 
-    # ----- Vector store -----
+    # ----- 向量库 -----
     vector_store: str = "pgvector"
 
-    # ----- Chunking / retrieval -----
+    # ----- 分块 / 检索 -----
     chunk_size: int = 800
     chunk_overlap: int = 100
     top_k: int = 5
 
     @property
     def async_database_url(self) -> str:
-        """URL used by the async SQLAlchemy engine.
+        """异步 SQLAlchemy engine 使用的 URL。
 
-        `postgresql+psycopg` (psycopg3) works for both sync (Alembic) and async
-        (create_async_engine) engines, so no rewriting is required.
+        `postgresql+psycopg`（psycopg3）同时适用于同步（Alembic）和异步
+        （create_async_engine）engine，因此无需做任何转换。
         """
         return self.database_url
 

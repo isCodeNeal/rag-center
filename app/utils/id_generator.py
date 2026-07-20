@@ -1,9 +1,8 @@
-"""Centralized ID generation for RAG-center-internal resources.
+"""RAG-center 内部资源的统一 ID 生成入口。
 
-Business-supplied identifiers (tenant_id, user_id) are NOT generated here — they are
-passed in by the caller. Everything the platform owns (kb_id, document_id, chunk_id,
-retrieval_log_id) gets a UUID from these helpers so generation is consistent and never
-hand-rolled inside services.
+业务方传入的标识符（tenant_id、user_id）不在这里生成 —— 它们由调用方传入。
+凡是平台自身拥有的资源（kb_id、document_id、chunk_id、retrieval_log_id）都通过
+这些 helper 生成 UUID，保证生成方式统一，不会在各个 service 内各写一套。
 """
 from __future__ import annotations
 

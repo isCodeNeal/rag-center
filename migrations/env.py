@@ -1,8 +1,7 @@
-"""Alembic environment.
+"""Alembic 环境配置。
 
-Uses a synchronous engine (psycopg3 supports both sync and async under the same
-`postgresql+psycopg` driver name). The DB URL comes from app settings (DATABASE_URL),
-and target metadata is Base.metadata with all models imported.
+使用同步引擎（psycopg3 在同一个 `postgresql+psycopg` 驱动名下同时支持同步和异步）。
+数据库 URL 来自应用配置（DATABASE_URL），target metadata 为导入了所有模型后的 Base.metadata。
 """
 from __future__ import annotations
 
@@ -14,7 +13,7 @@ from sqlalchemy import engine_from_config, pool
 from app.core.config import settings
 from app.db.base import Base
 
-# Import models so they register on Base.metadata.
+# 导入模型，使其注册到 Base.metadata 上。
 import app.models  # noqa: F401
 
 config = context.config
@@ -22,7 +21,7 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Inject the runtime DB URL from settings.
+# 从 settings 注入运行时的数据库 URL。
 config.set_main_option("sqlalchemy.url", settings.database_url)
 
 target_metadata = Base.metadata

@@ -1,1 +1,1 @@
-"""Core cross-cutting concerns: config, logging, exceptions."""
+"""核心横切关注点：配置、日志、异常。"""

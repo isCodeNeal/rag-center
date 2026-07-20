@@ -15,9 +15,9 @@ def test_split_short_text_single_chunk():
 
 def test_split_respects_size_and_overlap():
     splitter = CharacterTextSplitter(chunk_size=10, chunk_overlap=2)
-    text = "abcdefghij" * 3  # 30 chars
+    text = "abcdefghij" * 3  # 共 30 个字符
     chunks = splitter.split(text)
-    # step = 8; windows start at 0, 8, 16, 24
+    # 步长为 8；窗口起始位置分别为 0、8、16、24
     assert len(chunks) == 4
     assert all(len(c) <= 10 for c in chunks)
 

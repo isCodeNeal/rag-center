@@ -1,4 +1,4 @@
-"""Document data access."""
+"""Document 数据访问。"""
 from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession

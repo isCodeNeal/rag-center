@@ -1,4 +1,4 @@
-"""Upload document endpoint (synchronous indexing)."""
+"""上传文档接口（同步索引）。"""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends

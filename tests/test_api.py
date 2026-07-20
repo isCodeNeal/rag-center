@@ -1,7 +1,6 @@
-"""API-level tests using dependency overrides (no real DB / embedding needed).
+"""基于依赖覆盖（dependency override）的 API 层测试（无需真实数据库 / embedding）。
 
-Verifies the unified {code, msg, data} envelope for success, business errors, and
-request validation errors.
+验证成功、业务异常、请求校验异常三种场景下统一的 {code, msg, data} 响应外壳。
 """
 from __future__ import annotations
 
@@ -61,7 +60,7 @@ def test_create_kb_success(client):
 
 
 def test_create_kb_validation_error(client):
-    # Missing required `name` -> unified envelope with PARAM_ERROR code.
+    # 缺少必填的 `name` -> 返回带 PARAM_ERROR 码的统一响应外壳。
     resp = client.post(
         "/api/v1/knowledge-bases/create",
         json={"tenant_id": "tenant_demo"},

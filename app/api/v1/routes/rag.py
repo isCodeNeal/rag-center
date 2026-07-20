@@ -1,4 +1,4 @@
-"""RAG retrieval augmentation endpoint."""
+"""RAG 检索增强接口。"""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends

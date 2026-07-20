@@ -1,1 +1,1 @@
-"""Data access layer (DB reads/writes only)."""
+"""数据访问层（仅负责 DB 读写）。"""

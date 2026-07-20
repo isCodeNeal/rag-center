@@ -1,1 +1,1 @@
-"""External-system adapters (embedding, vector store, parser)."""
+"""外部系统适配器（embedding、vector store、parser）。"""

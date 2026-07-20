@@ -1,1 +1,1 @@
-"""Application package for the RAG capability center."""
+"""RAG 能力中心应用包。"""

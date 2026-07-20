@@ -1,8 +1,8 @@
-"""RAG retrieval service.
+"""RAG 检索 service。
 
-Embeds the query, runs vector similarity search via the VectorStore abstraction,
-records a retrieval log, and returns structured chunks + metadata. It does NOT stitch
-a context_text and does NOT call a generation model — callers orchestrate their own LLM.
+对 query 做 embedding，通过 VectorStore 抽象接口执行向量相似度检索，记录一条
+retrieval log，并返回结构化的 chunk + metadata。这里不拼接 context_text，也不
+调用生成模型 —— 由调用方自行编排各自的 LLM。
 """
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ class RAGService:
         self._vector_store_name = vector_store_name
 
     async def retrieve(self, req: RetrieveRequest) -> RetrieveData:
-        # Validate the knowledge base exists for this tenant.
+        # 校验该租户下知识库是否存在
         kb = await self._kb_repo.get_for_tenant(req.kb_id, req.tenant_id)
         if kb is None:
             raise KnowledgeBaseNotFound(req.kb_id)
@@ -56,10 +56,10 @@ class RAGService:
         top_k = req.top_k or settings.top_k
         started = time.perf_counter()
 
-        # 1. Embed the query.
+        # 1. 对 query 进行 embedding
         query_vector = await self._embedding.embed_query(req.query)
 
-        # 2. Vector similarity search (scoped to tenant + kb).
+        # 2. 向量相似度检索（限定在 tenant + kb 范围内）
         hits = await self._vector_store.similarity_search(
             query_vector,
             tenant_id=req.tenant_id,
@@ -79,7 +79,7 @@ class RAGService:
             for h in hits
         ]
 
-        # 3. Record the retrieval log (best-effort observability).
+        # 3. 记录 retrieval log（尽力而为的可观测性埋点）
         log = RetrievalLog(
             id=new_retrieval_log_id(),
             tenant_id=req.tenant_id,

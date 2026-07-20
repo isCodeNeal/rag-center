@@ -1,1 +1,1 @@
-"""Embedding providers."""
+"""Embedding provider 实现。"""

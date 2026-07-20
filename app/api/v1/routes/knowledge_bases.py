@@ -1,4 +1,4 @@
-"""Create knowledge base endpoint."""
+"""创建知识库接口。"""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends

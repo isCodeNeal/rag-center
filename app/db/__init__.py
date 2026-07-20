@@ -1,1 +1,1 @@
-"""Database engine, session, and declarative base."""
+"""数据库 engine、session 以及 declarative base。"""

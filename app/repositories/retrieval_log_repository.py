@@ -1,4 +1,4 @@
-"""RetrievalLog data access."""
+"""RetrievalLog 数据访问。"""
 from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession

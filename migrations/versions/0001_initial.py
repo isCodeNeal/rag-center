@@ -1,4 +1,4 @@
-"""initial schema: knowledge_bases, documents, chunks, retrieval_logs + pgvector
+"""初始 schema：knowledge_bases、documents、chunks、retrieval_logs + pgvector
 
 Revision ID: 0001_initial
 Revises:
@@ -13,7 +13,7 @@ from sqlalchemy.dialects import postgresql
 
 from app.core.config import settings
 
-# revision identifiers, used by Alembic.
+# 修订版本标识，供 Alembic 使用。
 revision: str = "0001_initial"
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
@@ -23,7 +23,7 @@ EMBEDDING_DIM = settings.embedding_dim
 
 
 def upgrade() -> None:
-    # pgvector extension required for the `vector` column type.
+    # vector 列类型需要先启用 pgvector 扩展
     op.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
     op.create_table(
@@ -90,4 +90,4 @@ def downgrade() -> None:
     op.drop_table("chunks")
     op.drop_table("documents")
     op.drop_table("knowledge_bases")
-    # Extension is left in place intentionally.
+    # 有意保留该扩展，不做移除。

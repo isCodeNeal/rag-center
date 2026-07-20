@@ -1,4 +1,4 @@
-"""Unified API response envelope: {code, msg, data}."""
+"""统一的 API 响应封装：{code, msg, data}。"""
 from __future__ import annotations
 
 from typing import Generic, TypeVar
@@ -9,9 +9,9 @@ T = TypeVar("T")
 
 
 class ApiResponse(BaseModel, Generic[T]):
-    """Standard response wrapper for all endpoints.
+    """所有接口的标准响应包装类。
 
-    code == 0 -> success; code != 0 -> failure (msg carries the reason, data may be null).
+    code == 0 表示成功；code != 0 表示失败（msg 携带失败原因，data 可能为 null）。
     """
 
     code: int = 0

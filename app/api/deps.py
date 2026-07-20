@@ -1,8 +1,8 @@
-"""FastAPI dependency wiring.
+"""FastAPI 依赖装配。
 
-Composes repositories, providers, and services per request. Providers are chosen from
-config (embedding provider, vector store) so business code never picks a concrete
-vendor/store — this is the seam for swapping implementations later.
+按请求组装 repository、provider 与 service。Provider 从配置中选择（embedding
+provider、向量库），因此业务代码不会直接选定具体的厂商/存储实现——这也是
+以后替换具体实现的切入点。
 """
 from __future__ import annotations
 
@@ -30,15 +30,15 @@ from app.services.rag_service import RAGService
 from app.utils.text_splitter import CharacterTextSplitter, TextSplitter
 
 
-# ----- DB session -----
+# ----- 数据库 session -----
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async for session in get_session():
         yield session
 
 
-# ----- Providers (selected from config) -----
+# ----- Provider（从配置中选择）-----
 def get_embedding_provider() -> EmbeddingProvider:
-    # Only an OpenAI-compatible provider exists in stage 1.
+    # 第一阶段仅提供 OpenAI 兼容的 provider。
     return OpenAICompatibleEmbeddingProvider()
 
 
@@ -53,7 +53,7 @@ def get_text_splitter() -> TextSplitter:
 def get_vector_store(db: AsyncSession = Depends(get_db)) -> VectorStore:
     if settings.vector_store == "pgvector":
         return PgVectorStore(ChunkRepository(db))
-    # Future: milvus / qdrant / elastic selected here.
+    # 后续可在此处扩展 milvus / qdrant / elastic 等选择逻辑。
     raise ValueError(f"unsupported VECTOR_STORE: {settings.vector_store}")
 
 
@@ -61,7 +61,7 @@ def get_vector_store_name() -> str:
     return VECTOR_STORE_NAME if settings.vector_store == "pgvector" else settings.vector_store
 
 
-# ----- Services -----
+# ----- Service -----
 def get_knowledge_base_service(
     db: AsyncSession = Depends(get_db),
 ) -> KnowledgeBaseService:

@@ -1,11 +1,11 @@
-"""Indexing service.
+"""Indexing service。
 
-Owns the synchronous split -> embed -> index pipeline. This is the single seam that
-later migrates to BackgroundTasks / Celery / a queue: only `index_document` changes,
-not the API or the rest of the services.
+负责同步的 split -> embed -> index 流水线。这是未来迁移到 BackgroundTasks /
+Celery / 消息队列时唯一需要改动的接缝：只需要改 `index_document`，API 和其它
+service 都不用变。
 
-It intentionally does NOT manage transactions/commits — the caller (DocumentService)
-owns the unit of work so it can record SUCCESS/FAILED status atomically.
+这里故意不管理事务/commit —— 调用方（DocumentService）拥有这个工作单元，由它
+来原子地记录 SUCCESS/FAILED 状态。
 """
 from __future__ import annotations
 
@@ -36,22 +36,22 @@ class IndexingService:
         self._vector_store = vector_store
 
     async def index_document(self, document: Document, content: str) -> int:
-        """Parse -> split -> embed -> write to the vector store.
+        """Parse -> split -> embed -> 写入向量存储。
 
-        Returns the number of chunks written. Raises IndexingError on any failure.
+        返回写入的 chunk 数量。任何失败都会抛出 IndexingError。
         """
-        # 1. Parse to normalized plain text.
+        # 1. 解析为归一化后的纯文本
         text = self._parser.parse(content, source_type=document.source_type)
 
-        # 2. Split into chunks.
+        # 2. 切分为多个 chunk
         pieces = self._splitter.split(text)
         if not pieces:
             raise IndexingError("document produced no chunks after splitting")
 
-        # 3. Embed all chunks.
+        # 3. 对所有 chunk 进行 embedding
         vectors = await self._embedding.embed_texts(pieces)
 
-        # 4. Build chunk payloads and write to the vector store.
+        # 4. 构建 chunk payload 并写入向量存储
         chunks = [
             {
                 "id": new_chunk_id(),
