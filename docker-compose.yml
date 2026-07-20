@@ -1,0 +1,47 @@
+# First-stage infrastructure: PostgreSQL 16 with the pgvector extension only.
+# Redis / Celery (async indexing) and Elasticsearch/OpenSearch (hybrid retrieval)
+# are intentionally NOT included yet — they are added in later stages.
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: rag-center-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: rag_center
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d rag_center"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    container_name: rag-center-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Inside the compose network the DB host is the service name "postgres".
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/rag_center
+      MODEL_BASE_URL: ${MODEL_BASE_URL:-https://api.openai.com/v1}
+      MODEL_API_KEY: ${MODEL_API_KEY:-your-api-key}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-1536}
+      VECTOR_STORE: pgvector
+      CHUNK_SIZE: ${CHUNK_SIZE:-800}
+      CHUNK_OVERLAP: ${CHUNK_OVERLAP:-100}
+      TOP_K: ${TOP_K:-5}
+    ports:
+      - "8000:8000"
+    # Run migrations then start the API.
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+volumes:
+  pgdata:
