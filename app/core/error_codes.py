@@ -49,7 +49,9 @@ class ErrorCode(Enum):
     LLM_TOKEN_LIMIT = (40004, "上下文长度超限")
     LLM_RATE_LIMIT = (40005, "大模型调用频率超限")
     LLM_MODEL_ERROR = (40006, "模型不存在或未部署")
+    LLM_INVALID_JSON = (40007, "大模型返回内容不是合法 JSON")
     EMBEDDING_ERROR = (40010, "向量化（embedding）调用失败")
+    RERANK_ERROR = (40020, "重排调用失败")
 
     # ---- 系统 / 服务 50000~59999 ----
     SERVER_ERROR = (50000, "服务器异常")

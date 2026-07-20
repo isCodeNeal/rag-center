@@ -49,6 +49,25 @@ class Settings(BaseSettings):
     chunk_overlap: int = 100
     top_k: int = 5
 
+    # ----- 通用大模型 provider（用于 rerank、query rewrite 等能力）-----
+    # llm_provider 第一版仅支持 "openai_compatible"；DeepSeek、百炼等兼容 OpenAI
+    # chat completions 协议的厂商都走这个实现，只需切换 base_url / model。
+    llm_provider: str = "openai_compatible"
+    llm_base_url: str = "https://api.deepseek.com/v1"
+    llm_api_key: str = "your-deepseek-api-key"
+    llm_model: str = "deepseek-chat"
+    llm_timeout_seconds: int = 60
+
+    # ----- 重排（rerank）-----
+    rerank_enabled: bool = False
+    # rerank_provider 第一版支持 "llm"（通过 LLMProvider 调用大模型打分）和
+    # "noop"（不重排，占位实现，用于配置关闭 rerank 或做对照测试）。
+    rerank_provider: str = "llm"
+    rerank_top_n: int = 5
+    rerank_max_candidates: int = 20  # 最多送入大模型的候选 chunk 数，控制 token 成本
+    rerank_chunk_max_chars: int = 1000  # 每个 chunk 送入大模型前的最大字符数
+    rerank_temperature: float = 0.0
+
     @property
     def async_database_url(self) -> str:
         """异步 SQLAlchemy engine 使用的 URL。

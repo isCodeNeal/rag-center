@@ -113,7 +113,125 @@ rag-center/
 返回 top-k 召回的 chunk（含 `document_id`、`chunk_id`、`title`、`content`、`score`）以及
 元信息（`top_k`、`vector_store`）。**不返回** 拼接后的 `context_text`，也 **不生成** 答案。
 
-交互式 API 文档在 `http://localhost:8000/docs`。
+> 当前版本支持可选的 **LLM 重排（rerank）**：向量召回后，可把候选 chunk 交给大模型打分，
+> 再按 `rerank_score` 重新排序并返回 `top_n` 个结果。重排失败会自动降级为原始向量排序，
+> 不影响接口整体可用性。
+
+#### 可选 rerank 请求示例
+
+```json
+{
+  "tenant_id": "tenant_demo",
+  "kb_id": "kb_xxx",
+  "user_id": "user_demo",
+  "query": "退款需要几天内申请？",
+  "top_k": 20,
+  "rerank_options": {
+    "enabled": true,
+    "top_n": 5
+  }
+}
+```
+
+#### 启用 rerank 后的响应片段
+
+```json
+{
+  "code": 0,
+  "msg": "success",
+  "data": {
+    "query": "退款需要几天内申请？",
+    "kb_id": "kb_xxx",
+    "retrieved_chunks": [
+      {
+        "document_id": "doc_001",
+        "chunk_id": "chunk_001",
+        "title": "退款政策",
+        "content": "用户可在订单完成后 7 天内申请退款。",
+        "score": 0.86,
+        "rerank_score": 0.95
+      }
+    ],
+    "metadata": {
+      "top_k": 20,
+      "vector_store": "pgvector",
+      "rerank": {
+        "enabled": true,
+        "provider": "llm",
+        "llm_provider": "openai_compatible",
+        "model": "deepseek-chat",
+        "top_n": 5,
+        "candidate_count": 20,
+        "degraded": false,
+        "error": null
+      }
+    }
+  }
+}
+```
+
+### LLM 重排（rerank）设计
+
+当前 RAG 链路：
+
+```text
+query
+  -> query embedding
+  -> VectorStore.similarity_search 召回 candidate chunks
+  -> （可选）RerankProvider.rerank(query, candidates, top_n)
+  -> 返回结构化 retrieved_chunks
+```
+
+#### 分层设计
+
+为避免把具体模型厂商写死，代码分成两层抽象：
+
+- **`LLMProvider`**：统一大模型调用接口，负责 `chat_json()`。
+  - 第一版实现：`OpenAICompatibleLLMProvider`
+  - 任何兼容 OpenAI chat completions 协议的厂商（DeepSeek、百炼等）都走这里。
+- **`RerankProvider`**：统一重排接口。
+  - `LLMRerankProvider`：依赖 `LLMProvider.chat_json()` 做打分重排。
+  - `NoopRerankProvider`：不重排，占位实现，用于关闭 rerank 或做对照测试。
+
+这样以后如果新增：
+- `AzureOpenAILLMProvider`
+- `ClaudeCompatibleLLMProvider`
+- `CrossEncoderRerankProvider`
+
+都不需要修改 `RAGService` 的主流程。
+
+#### 候选数据如何传给大模型
+
+传给大模型的是**结构化 JSON**，而不是随意拼接的一大段文本：
+
+```json
+{
+  "query": "退款需要几天内申请？",
+  "candidates": [
+    {
+      "chunk_id": "chunk_001",
+      "document_id": "doc_001",
+      "title": "退款政策",
+      "content": "用户可在订单完成后 7 天内申请退款。",
+      "vector_score": 0.86
+    }
+  ],
+  "top_n": 5
+}
+```
+
+为了控制 token 成本：
+- 单次 rerank 的候选 chunk 数由 `RERANK_MAX_CANDIDATES` 控制（默认 20）
+- 单个 chunk 的 `content` 会截断到 `RERANK_CHUNK_MAX_CHARS`（默认 1000）
+- 不传 embedding 向量本身，也不传数据库内部无关字段
+
+#### 失败降级策略
+
+- **embedding 失败 / 向量检索失败**：接口失败（这是主链路）
+- **rerank 失败**：接口**不失败**，自动降级为原始向量排序
+  - `metadata.rerank.degraded = true`
+  - `metadata.rerank.error` 带简要错误原因
+  - `retrieved_chunks` 仍返回原始向量召回结果
 
 ## 本地启动
 

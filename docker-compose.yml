@@ -32,6 +32,19 @@ services:
       MODEL_API_KEY: ${MODEL_API_KEY:-your-api-key}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
       EMBEDDING_DIM: ${EMBEDDING_DIM:-1536}
+      # 通用 LLM provider（rerank / query rewrite 等能力共用）
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai_compatible}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com/v1}
+      LLM_API_KEY: ${LLM_API_KEY:-your-deepseek-api-key}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-chat}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-60}
+      # 重排（rerank）
+      RERANK_ENABLED: ${RERANK_ENABLED:-false}
+      RERANK_PROVIDER: ${RERANK_PROVIDER:-llm}
+      RERANK_TOP_N: ${RERANK_TOP_N:-5}
+      RERANK_MAX_CANDIDATES: ${RERANK_MAX_CANDIDATES:-20}
+      RERANK_CHUNK_MAX_CHARS: ${RERANK_CHUNK_MAX_CHARS:-1000}
+      RERANK_TEMPERATURE: ${RERANK_TEMPERATURE:-0.0}
       VECTOR_STORE: pgvector
       CHUNK_SIZE: ${CHUNK_SIZE:-800}
       CHUNK_OVERLAP: ${CHUNK_OVERLAP:-100}

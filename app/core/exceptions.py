@@ -78,3 +78,21 @@ class VectorStoreError(AppException):
 class IndexingError(AppException):
     def __init__(self, detail: str | None = None):
         super().__init__(ErrorCode.INDEXING_ERROR, detail=detail)
+
+
+class LLMProviderError(AppException):
+    """通用大模型调用异常（LLMProvider 实现统一抛出这个类型）。
+
+    覆盖调用失败、超时、返回内容不是合法 JSON 等场景。RerankProvider 等上层
+    捕获这个异常做降级处理，而不是让整个请求失败。
+    """
+
+    def __init__(self, detail: str | None = None, *, error_code: ErrorCode = ErrorCode.LLM_ERROR):
+        super().__init__(error_code, detail=detail)
+
+
+class RerankError(AppException):
+    """重排调用异常。仅用于内部识别/日志，RagService 会捕获它并降级为原向量排序。"""
+
+    def __init__(self, detail: str | None = None):
+        super().__init__(ErrorCode.RERANK_ERROR, detail=detail)
