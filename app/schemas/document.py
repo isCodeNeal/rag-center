@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field
 
 
 class UploadDocumentRequest(BaseModel):
-    tenant_id: str = Field(..., min_length=1, max_length=128)
     kb_id: str = Field(..., min_length=1, max_length=64)
     title: str = Field(..., min_length=1, max_length=512)
     # 第一阶段直接接受原始文本内容（.txt / .md 风格的纯文本）

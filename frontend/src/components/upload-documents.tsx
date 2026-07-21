@@ -22,7 +22,6 @@ import {
 import { useUploadDocuments, type UploadItem } from "@/hooks/use-upload-documents";
 
 interface Props {
-  tenantId: string;
   kbId: string;
   onKbIdChange: (v: string) => void;
 }
@@ -42,7 +41,7 @@ function StatusBadge({ item }: { item: UploadItem }) {
   }
 }
 
-export function UploadDocuments({ tenantId, kbId, onKbIdChange }: Props) {
+export function UploadDocuments({ kbId, onKbIdChange }: Props) {
   const { items, isUploading, upload, reset } = useUploadDocuments();
   const [files, setFiles] = React.useState<File[]>([]);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -55,11 +54,10 @@ export function UploadDocuments({ tenantId, kbId, onKbIdChange }: Props) {
   };
 
   const startUpload = async () => {
-    if (!tenantId.trim()) return toast.error("请先填写 tenant_id");
     if (!kbId.trim()) return toast.error("请先填写 kb_id（可在上方创建知识库）");
     if (files.length === 0) return toast.error("请先选择文件或文件夹");
 
-    await upload({ tenantId: tenantId.trim(), kbId: kbId.trim(), files });
+    await upload({ kbId: kbId.trim(), files });
   };
 
   const summary = React.useMemo(() => {

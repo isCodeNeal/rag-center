@@ -72,9 +72,9 @@ class RAGService:
         self._rerank = rerank_provider
         self._hybrid_search = hybrid_search_service
 
-    async def retrieve(self, req: RetrieveRequest) -> RetrieveData:
+    async def retrieve(self, req: RetrieveRequest, tenant_id: str) -> RetrieveData:
         # 校验该租户下知识库是否存在
-        kb = await self._kb_repo.get_for_tenant(req.kb_id, req.tenant_id)
+        kb = await self._kb_repo.get_for_tenant(req.kb_id, tenant_id)
         if kb is None:
             raise KnowledgeBaseNotFound(req.kb_id)
 
@@ -95,11 +95,11 @@ class RAGService:
 
         # 根据检索模式执行召回
         if retrieval_mode == "vector":
-            candidates, retrieval_meta = await self._retrieve_vector_only(req, top_k)
+            candidates, retrieval_meta = await self._retrieve_vector_only(req, tenant_id, top_k)
         elif retrieval_mode == "bm25":
-            candidates, retrieval_meta = await self._retrieve_bm25_only(req, top_k)
+            candidates, retrieval_meta = await self._retrieve_bm25_only(req, tenant_id, top_k)
         else:  # hybrid
-            candidates, retrieval_meta = await self._retrieve_hybrid(req)
+            candidates, retrieval_meta = await self._retrieve_hybrid(req, tenant_id)
 
         # 可选 rerank 阶段（精排）
         rerank_meta = RerankMetadata(enabled=rerank_enabled)
@@ -128,7 +128,7 @@ class RAGService:
         # 记录 retrieval log（尽力而为的可观测性埋点）
         log = RetrievalLog(
             id=new_retrieval_log_id(),
-            tenant_id=req.tenant_id,
+            tenant_id=tenant_id,
             kb_id=req.kb_id,
             user_id=req.user_id,
             query=req.query,
@@ -157,18 +157,19 @@ class RAGService:
             metadata=RetrieveMetadata(
                 top_k=top_k,
                 vector_store=self._vector_store_name,
+                latency_ms=latency_ms,
                 retrieval=retrieval_meta,
                 rerank=rerank_meta,
             ),
         )
 
     async def _retrieve_vector_only(
-        self, req: RetrieveRequest, top_k: int
+        self, req: RetrieveRequest, tenant_id: str, top_k: int
     ) -> tuple[list[dict[str, Any]], HybridRetrievalMetadata]:
         query_vector = await self._embedding.embed_query(req.query)
         hits = await self._vector_store.similarity_search(
             query_vector,
-            tenant_id=req.tenant_id,
+            tenant_id=tenant_id,
             kb_id=req.kb_id,
             top_k=top_k,
         )
@@ -194,14 +195,14 @@ class RAGService:
         return candidates, meta
 
     async def _retrieve_bm25_only(
-        self, req: RetrieveRequest, top_k: int
+        self, req: RetrieveRequest, tenant_id: str, top_k: int
     ) -> tuple[list[dict[str, Any]], HybridRetrievalMetadata]:
         if self._keyword_search is None:
             raise KeywordSearchError("keyword search provider not configured")
 
         hits = await self._keyword_search.keyword_search(
             query=req.query,
-            tenant_id=req.tenant_id,
+            tenant_id=tenant_id,
             kb_id=req.kb_id,
             top_k=top_k,
         )
@@ -227,7 +228,7 @@ class RAGService:
         return candidates, meta
 
     async def _retrieve_hybrid(
-        self, req: RetrieveRequest
+        self, req: RetrieveRequest, tenant_id: str
     ) -> tuple[list[dict[str, Any]], HybridRetrievalMetadata]:
         if self._keyword_search is None:
             raise KeywordSearchError("keyword search provider not configured for hybrid mode")
@@ -251,10 +252,10 @@ class RAGService:
         # 并行执行向量召回和 BM25 召回
         query_vector = await self._embedding.embed_query(req.query)
         vector_task = self._vector_store.similarity_search(
-            query_vector, tenant_id=req.tenant_id, kb_id=req.kb_id, top_k=vector_top_k
+            query_vector, tenant_id=tenant_id, kb_id=req.kb_id, top_k=vector_top_k
         )
         bm25_task = self._keyword_search.keyword_search(
-            query=req.query, tenant_id=req.tenant_id, kb_id=req.kb_id, top_k=bm25_top_k
+            query=req.query, tenant_id=tenant_id, kb_id=req.kb_id, top_k=bm25_top_k
         )
 
         vector_hits, bm25_hits = None, None

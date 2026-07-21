@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.chunk import Chunk
@@ -73,3 +73,14 @@ class ChunkRepository:
             delete(Chunk).where(Chunk.document_id == document_id)
         )
         await self._session.flush()
+
+    async def count_by_document_ids(self, document_ids: list[str]) -> dict[str, int]:
+        if not document_ids:
+            return {}
+        stmt = (
+            select(Chunk.document_id, func.count().label("cnt"))
+            .where(Chunk.document_id.in_(document_ids))
+            .group_by(Chunk.document_id)
+        )
+        result = await self._session.execute(stmt)
+        return {document_id: int(cnt) for document_id, cnt in result.all()}

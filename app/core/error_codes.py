@@ -35,6 +35,7 @@ class ErrorCode(Enum):
     API_REQUEST_ERROR = (20001, "接口请求失败")
     API_TIMEOUT = (20002, "接口请求超时")
     API_RATE_LIMIT = (20003, "接口调用超限")
+    API_KEY_INVALID = (20010, "API Key 无效或未授权")
 
     # ---- 数据库 / 存储 30000~39999 ----
     DB_ERROR = (30001, "数据库操作失败")

@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     app_env: str = "local"
     app_name: str = "rag-center"
 
+    # ----- 鉴权 -----
+    # 是否启用 API Key 鉴权；本地调试可设 false（此时固定使用默认租户 tenant_demo）
+    auth_enabled: bool = True
+
     # ----- 日志 -----
     log_level: str = "INFO"
     log_dir: str = "logs"

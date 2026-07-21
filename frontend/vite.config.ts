@@ -8,6 +8,7 @@ export default defineConfig(() => {
   const apiTarget = process.env.VITE_API_TARGET || "http://localhost:8000";
   return {
     plugins: [react()],
+    envPrefix: ["VITE_", "API_"],
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./src"),

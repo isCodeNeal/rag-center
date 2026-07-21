@@ -107,3 +107,11 @@ class KeywordSearchError(AppException):
 
     def __init__(self, detail: str | None = None):
         super().__init__(ErrorCode.KEYWORD_SEARCH_ERROR, detail=detail)
+
+
+class Unauthorized(AppException):
+    """API Key 缺失 / 无效 / 过期，或租户被禁用。对外返回 code 20010。"""
+
+    def __init__(self, detail: str | None = None):
+        super().__init__(ErrorCode.API_KEY_INVALID, detail=detail)
+

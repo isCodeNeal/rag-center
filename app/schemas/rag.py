@@ -8,7 +8,6 @@ from app.schemas.rerank import RerankMetadata, RerankOptions
 
 
 class RetrieveRequest(BaseModel):
-    tenant_id: str = Field(..., min_length=1, max_length=128)
     kb_id: str = Field(..., min_length=1, max_length=64)
     # user_id 由调用方提供；用于记录日志/未来的 ACL
     user_id: str = Field(..., min_length=1, max_length=128)
@@ -40,6 +39,7 @@ class RetrievedChunk(BaseModel):
 class RetrieveMetadata(BaseModel):
     top_k: int
     vector_store: str
+    latency_ms: int
     retrieval: RetrievalMetadata
     rerank: RerankMetadata
 

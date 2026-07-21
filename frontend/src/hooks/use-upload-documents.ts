@@ -16,7 +16,6 @@ export interface UploadItem {
 }
 
 interface UploadArgs {
-  tenantId: string;
   kbId: string;
   files: File[];
 }
@@ -41,7 +40,7 @@ export function useUploadDocuments() {
   }, []);
 
   const upload = React.useCallback(
-    async ({ tenantId, kbId, files }: UploadArgs) => {
+    async ({ kbId, files }: UploadArgs) => {
       // 初始化列表
       const initial: UploadItem[] = files.map((f) => ({
         path: getPath(f),
@@ -68,7 +67,6 @@ export function useUploadDocuments() {
             continue;
           }
           const data = await uploadDocument({
-            tenant_id: tenantId,
             kb_id: kbId,
             title: fileNameToTitle(file.name),
             content,

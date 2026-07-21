@@ -127,17 +127,19 @@ async def test_rag_service_without_rerank_returns_vector_hits():
     )
     data = await svc.retrieve(
         RetrieveRequest(
-            tenant_id="tenant_demo",
             kb_id="kb-1",
             user_id="u-1",
             query="退款需要几天内申请？",
             rerank_options={"enabled": False, "top_n": 1},
-        )
+        ),
+        "tenant_demo",
     )
     assert len(data.retrieved_chunks) == 1
     assert data.retrieved_chunks[0].chunk_id == "chunk-1"
     assert data.retrieved_chunks[0].rerank_score is None
     assert data.metadata.rerank.enabled is False
+    assert isinstance(data.metadata.latency_ms, int)
+    assert data.metadata.latency_ms >= 0
 
 
 @pytest.mark.asyncio
@@ -156,13 +158,13 @@ async def test_rag_service_with_rerank_returns_rerank_score_and_metadata():
     )
     data = await svc.retrieve(
         RetrieveRequest(
-            tenant_id="tenant_demo",
             kb_id="kb-1",
             user_id="u-1",
             query="退款需要几天内申请？",
             top_k=2,
             rerank_options={"enabled": True, "top_n": 1},
-        )
+        ),
+        "tenant_demo",
     )
     assert len(data.retrieved_chunks) == 1
     assert data.retrieved_chunks[0].chunk_id == "chunk-2"
@@ -189,13 +191,13 @@ async def test_rag_service_rerank_failure_degrades_to_vector_order():
     )
     data = await svc.retrieve(
         RetrieveRequest(
-            tenant_id="tenant_demo",
             kb_id="kb-1",
             user_id="u-1",
             query="退款需要几天内申请？",
             top_k=2,
             rerank_options={"enabled": True, "top_n": 1},
-        )
+        ),
+        "tenant_demo",
     )
     assert len(data.retrieved_chunks) == 1
     # 降级后沿用原向量排序

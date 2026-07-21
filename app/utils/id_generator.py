@@ -27,3 +27,7 @@ def new_chunk_id() -> str:
 
 def new_retrieval_log_id() -> str:
     return _uuid()
+
+
+def new_api_key_id() -> str:
+    return _uuid()

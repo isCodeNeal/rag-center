@@ -25,11 +25,10 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 interface Props {
-  tenantId: string;
   onCreated: (kb: KnowledgeBaseData) => void;
 }
 
-export function CreateKnowledgeBase({ tenantId, onCreated }: Props) {
+export function CreateKnowledgeBase({ onCreated }: Props) {
   const { mutateAsync, isPending } = useCreateKnowledgeBase();
   const {
     register,
@@ -40,15 +39,10 @@ export function CreateKnowledgeBase({ tenantId, onCreated }: Props) {
 
   const onSubmit = React.useCallback(
     async (values: FormValues) => {
-      if (!tenantId.trim()) {
-        toast.error("请先填写 tenant_id");
-        return;
-      }
       try {
         const kb = await mutateAsync({
           name: values.name,
           description: values.description || undefined,
-          tenant_id: tenantId.trim(),
         });
         toast.success(`知识库创建成功：${kb.name}`);
         reset();
@@ -57,7 +51,7 @@ export function CreateKnowledgeBase({ tenantId, onCreated }: Props) {
         toast.error(e instanceof Error ? e.message : "创建失败");
       }
     },
-    [mutateAsync, onCreated, reset, tenantId]
+    [mutateAsync, onCreated, reset]
   );
 
   return (

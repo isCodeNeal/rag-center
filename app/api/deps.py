@@ -112,7 +112,12 @@ def get_hybrid_search_service() -> HybridSearchService:
 def get_knowledge_base_service(
     db: AsyncSession = Depends(get_db),
 ) -> KnowledgeBaseService:
-    return KnowledgeBaseService(db, KnowledgeBaseRepository(db))
+    return KnowledgeBaseService(
+        db,
+        KnowledgeBaseRepository(db),
+        DocumentRepository(db),
+        ChunkRepository(db),
+    )
 
 
 def get_document_service(

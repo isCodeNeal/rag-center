@@ -25,3 +25,13 @@ class KnowledgeBaseRepository:
         )
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def list_by_tenant(
+        self, tenant_id: str, keyword: str | None = None
+    ) -> list[KnowledgeBase]:
+        stmt = select(KnowledgeBase).where(KnowledgeBase.tenant_id == tenant_id)
+        if keyword:
+            stmt = stmt.where(KnowledgeBase.name.ilike(f"%{keyword}%"))
+        stmt = stmt.order_by(KnowledgeBase.created_at.desc())
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())

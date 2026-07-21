@@ -35,16 +35,16 @@ class DocumentService:
         self._doc_repo = document_repository
         self._indexing = indexing_service
 
-    async def upload(self, req: UploadDocumentRequest) -> UploadDocumentData:
+    async def upload(self, req: UploadDocumentRequest, tenant_id: str) -> UploadDocumentData:
         # 校验该租户下知识库是否存在
-        kb = await self._kb_repo.get_for_tenant(req.kb_id, req.tenant_id)
+        kb = await self._kb_repo.get_for_tenant(req.kb_id, tenant_id)
         if kb is None:
             raise KnowledgeBaseNotFound(req.kb_id)
 
         # 1. 创建 document（状态 PROCESSING）并提前落库
         document = Document(
             id=new_document_id(),
-            tenant_id=req.tenant_id,
+            tenant_id=tenant_id,
             kb_id=req.kb_id,
             title=req.title,
             source_type=req.source_type or "text",
