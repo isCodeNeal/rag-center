@@ -120,7 +120,10 @@ async def test_rag_service_without_rerank_returns_vector_hits():
         embedding_provider=_FakeEmbedding(),
         vector_store=_FakeVectorStore(),
         vector_store_name="pgvector",
+        keyword_search_provider=None,
+        keyword_search_provider_name=None,
         rerank_provider=_NoopRerank(),
+        hybrid_search_service=None,  # type: ignore
     )
     data = await svc.retrieve(
         RetrieveRequest(
@@ -146,7 +149,10 @@ async def test_rag_service_with_rerank_returns_rerank_score_and_metadata():
         embedding_provider=_FakeEmbedding(),
         vector_store=_FakeVectorStore(),
         vector_store_name="pgvector",
+        keyword_search_provider=None,
+        keyword_search_provider_name=None,
         rerank_provider=_GoodRerank(),
+        hybrid_search_service=None,  # type: ignore
     )
     data = await svc.retrieve(
         RetrieveRequest(
@@ -176,7 +182,10 @@ async def test_rag_service_rerank_failure_degrades_to_vector_order():
         embedding_provider=_FakeEmbedding(),
         vector_store=_FakeVectorStore(),
         vector_store_name="pgvector",
+        keyword_search_provider=None,
+        keyword_search_provider_name=None,
         rerank_provider=_FailingRerank(),
+        hybrid_search_service=None,  # type: ignore
     )
     data = await svc.retrieve(
         RetrieveRequest(

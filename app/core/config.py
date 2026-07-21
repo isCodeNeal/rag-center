@@ -68,6 +68,25 @@ class Settings(BaseSettings):
     rerank_chunk_max_chars: int = 1000  # 每个 chunk 送入大模型前的最大字符数
     rerank_temperature: float = 0.0
 
+    # ----- 关键词检索（BM25，用于混合检索）-----
+    # 第一版 provider 为 "elasticsearch"；后续可扩展 "opensearch"。
+    keyword_search_provider: str = "elasticsearch"
+    elasticsearch_url: str = "http://localhost:9200"
+    elasticsearch_index: str = "rag_chunks"
+    # index mapping 中 title/content 使用的分词器；IK 需 ES 安装 analysis-ik 插件。
+    # 若环境未装 IK，可临时改为 "standard" 兜底（中文分词效果会变差）。
+    elasticsearch_analyzer: str = "ik_max_word"
+    elasticsearch_search_analyzer: str = "ik_smart"
+
+    # ----- 检索模式与混合检索（RRF 融合）-----
+    # retrieval_mode 默认检索模式："vector" / "bm25" / "hybrid"。
+    retrieval_mode: str = "vector"
+    hybrid_fusion: str = "rrf"  # 第一版融合策略仅支持 rrf
+    hybrid_rrf_k: int = 60
+    hybrid_vector_top_k: int = 20
+    hybrid_bm25_top_k: int = 20
+    hybrid_top_n: int = 20  # 融合后默认返回候选数量
+
     @property
     def async_database_url(self) -> str:
         """异步 SQLAlchemy engine 使用的 URL。

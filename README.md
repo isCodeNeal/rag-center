@@ -111,13 +111,138 @@ rag-center/
 ```
 
 返回 top-k 召回的 chunk（含 `document_id`、`chunk_id`、`title`、`content`、`score`）以及
-元信息（`top_k`、`vector_store`）。**不返回** 拼接后的 `context_text`，也 **不生成** 答案。
+元信息（`top_k`、`vector_store`、`retrieval`、`rerank`）。**不返回** 拼接后的 `context_text`，也 **不生成** 答案。
 
-> 当前版本支持可选的 **LLM 重排（rerank）**：向量召回后，可把候选 chunk 交给大模型打分，
-> 再按 `rerank_score` 重新排序并返回 `top_n` 个结果。重排失败会自动降级为原始向量排序，
-> 不影响接口整体可用性。
+> 当前版本支持三种检索模式：
+> - **`vector`**（默认）：纯向量相似度召回（pgvector）
+> - **`bm25`**：纯 BM25 关键词召回（Elasticsearch）
+> - **`hybrid`**：向量 + BM25 并行召回，RRF 融合排序
+>
+> 以及可选的 **LLM 重排（rerank）**：召回后可把候选 chunk 交给大模型打分，
+> 再按 `rerank_score` 重新排序并返回 `top_n` 个结果。rerank 和 BM25 失败会自动
+> 降级，不影响接口整体可用性。
 
-#### 可选 rerank 请求示例
+#### 混合检索请求示例（hybrid mode + rerank）
+
+```json
+{
+  "tenant_id": "tenant_demo",
+  "kb_id": "kb_xxx",
+  "user_id": "user_demo",
+  "query": "退款需要几天内申请？",
+  "top_k": 20,
+  "retrieval_options": {
+    "mode": "hybrid",
+    "vector_top_k": 20,
+    "bm25_top_k": 20,
+    "rrf_k": 60
+  },
+  "rerank_options": {
+    "enabled": true,
+    "top_n": 5
+  }
+}
+```
+
+#### 启用混合检索 + rerank 后的响应片段
+
+```json
+{
+  "code": 0,
+  "msg": "success",
+  "data": {
+    "query": "退款需要几天内申请？",
+    "kb_id": "kb_xxx",
+    "retrieved_chunks": [
+      {
+        "document_id": "doc_001",
+        "chunk_id": "chunk_001",
+        "title": "退款政策",
+        "content": "用户可在订单完成后 7 天内申请退款。",
+        "score": 0.0321,
+        "vector_score": 0.86,
+        "bm25_score": 12.4,
+        "vector_rank": 1,
+        "bm25_rank": 2,
+        "retrieval_source": "hybrid",
+        "rerank_score": 0.95
+      }
+    ],
+    "metadata": {
+      "top_k": 20,
+      "vector_store": "pgvector",
+      "retrieval": {
+        "mode": "hybrid",
+        "fusion": "rrf",
+        "rrf_k": 60,
+        "vector_store": "pgvector",
+        "keyword_search": "elasticsearch",
+        "vector_top_k": 20,
+        "bm25_top_k": 20,
+        "vector_count": 20,
+        "bm25_count": 18,
+        "fused_count": 31,
+        "degraded": false
+      },
+      "rerank": {
+        "enabled": true,
+        "provider": "llm",
+        "llm_provider": "openai_compatible",
+        "model": "deepseek-chat",
+        "top_n": 5,
+        "degraded": false
+      }
+    }
+  }
+}
+```
+
+### 混合检索（Hybrid Search）+ RRF 融合设计
+
+当前 RAG 链路（`hybrid` 模式）：
+
+```text
+query
+  -> query embedding
+  -> pgvector 向量召回 vector_top_k + Elasticsearch BM25 召回 bm25_top_k（并行）
+  -> RRF（Reciprocal Rank Fusion）融合排序
+  -> 得到候选 chunks（按 fused_score 排序）
+  -> （可选）LLM rerank
+  -> 返回最终 chunks
+```
+
+#### 为什么使用 RRF
+
+不直接加权融合 `vector_score * 0.6 + bm25_score * 0.4` 的原因：
+
+- 向量分数和 BM25 分数不是同一量纲（向量相似度通常 0~1，BM25 分数无上界）
+- BM25 分数受词频、字段长度、语料分布影响，直接相加不稳定
+- 需要额外归一化，工程复杂度高
+
+**RRF（Reciprocal Rank Fusion）**只看排名，不依赖原始分数尺度：
+
+```
+rrf_score = 1 / (rrf_k + rank)
+```
+
+如果一个 chunk 同时被向量检索和 BM25 召回：
+
+```
+fused_score = 1 / (rrf_k + vector_rank) + 1 / (rrf_k + bm25_rank)
+```
+
+- `rrf_k` 默认 60（可通过 `HYBRID_RRF_K` 配置）
+- 实现简单，工程上稳定，适合作为第一版混合检索默认策略
+
+#### 失败降级策略
+
+- `RETRIEVAL_MODE=vector`：完全不依赖 Elasticsearch
+- `RETRIEVAL_MODE=hybrid`：
+  - pgvector 检索失败 → 接口失败（主链路）
+  - ES BM25 检索失败 → **接口不失败**，自动降级为纯向量结果，`metadata.retrieval.degraded=true` 并带 `degraded_reason`
+- rerank 失败 → 接口不失败，降级为原向量/混合排序，`metadata.rerank.degraded=true`
+
+### 可选 rerank 请求示例（纯向量模式）
 
 ```json
 {

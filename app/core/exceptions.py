@@ -96,3 +96,14 @@ class RerankError(AppException):
 
     def __init__(self, detail: str | None = None):
         super().__init__(ErrorCode.RERANK_ERROR, detail=detail)
+
+
+class KeywordSearchError(AppException):
+    """关键词检索（Elasticsearch BM25）异常。
+
+    hybrid 模式下若 BM25 检索失败，RagService 捕获此异常并降级为纯向量结果，
+    而不是让整个检索接口失败。
+    """
+
+    def __init__(self, detail: str | None = None):
+        super().__init__(ErrorCode.KEYWORD_SEARCH_ERROR, detail=detail)

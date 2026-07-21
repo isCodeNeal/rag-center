@@ -19,11 +19,32 @@ services:
       timeout: 5s
       retries: 10
 
+  elasticsearch:
+    # 自建镜像：官方 ES 8.17.10 + analysis-ik 中文分词插件（见 docker/es/Dockerfile）。
+    build: ./docker/es
+    image: rag-center-es-ik:8.17.10
+    container_name: rag-center-es
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+
   api:
     build: .
     container_name: rag-center-api
     depends_on:
       postgres:
+        condition: service_healthy
+      elasticsearch:
         condition: service_healthy
     environment:
       # Inside the compose network the DB host is the service name "postgres".
@@ -45,6 +66,19 @@ services:
       RERANK_MAX_CANDIDATES: ${RERANK_MAX_CANDIDATES:-20}
       RERANK_CHUNK_MAX_CHARS: ${RERANK_CHUNK_MAX_CHARS:-1000}
       RERANK_TEMPERATURE: ${RERANK_TEMPERATURE:-0.0}
+      # 关键词检索（Elasticsearch BM25 / 混合检索）
+      KEYWORD_SEARCH_PROVIDER: ${KEYWORD_SEARCH_PROVIDER:-elasticsearch}
+      ELASTICSEARCH_URL: ${ELASTICSEARCH_URL:-http://elasticsearch:9200}
+      ELASTICSEARCH_INDEX: ${ELASTICSEARCH_INDEX:-rag_chunks}
+      ELASTICSEARCH_ANALYZER: ${ELASTICSEARCH_ANALYZER:-ik_max_word}
+      ELASTICSEARCH_SEARCH_ANALYZER: ${ELASTICSEARCH_SEARCH_ANALYZER:-ik_smart}
+      # 检索模式与混合检索融合
+      RETRIEVAL_MODE: ${RETRIEVAL_MODE:-vector}
+      HYBRID_FUSION: ${HYBRID_FUSION:-rrf}
+      HYBRID_RRF_K: ${HYBRID_RRF_K:-60}
+      HYBRID_VECTOR_TOP_K: ${HYBRID_VECTOR_TOP_K:-20}
+      HYBRID_BM25_TOP_K: ${HYBRID_BM25_TOP_K:-20}
+      HYBRID_TOP_N: ${HYBRID_TOP_N:-20}
       VECTOR_STORE: pgvector
       CHUNK_SIZE: ${CHUNK_SIZE:-800}
       CHUNK_OVERLAP: ${CHUNK_OVERLAP:-100}
@@ -58,3 +92,4 @@ services:
 
 volumes:
   pgdata:
+  es_data:

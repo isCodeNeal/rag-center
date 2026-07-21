@@ -1,8 +1,8 @@
 """FastAPI 依赖装配。
 
 按请求组装 repository、provider 与 service。Provider 从配置中选择（embedding
-provider、向量库、LLM provider、rerank provider），因此业务代码不会直接选定
-具体的厂商/存储实现——这也是以后替换具体实现的切入点。
+provider、向量库、LLM provider、rerank provider、keyword search provider），
+因此业务代码不会直接选定具体的厂商/存储实现——这也是以后替换具体实现的切入点。
 """
 from __future__ import annotations
 
@@ -15,6 +15,11 @@ from app.core.config import settings
 from app.db.session import get_session
 from app.providers.embedding.base import EmbeddingProvider
 from app.providers.embedding.openai_compatible import OpenAICompatibleEmbeddingProvider
+from app.providers.keyword_search.base import KeywordSearchProvider
+from app.providers.keyword_search.elasticsearch import (
+    KEYWORD_SEARCH_PROVIDER_NAME,
+    ElasticsearchKeywordSearchProvider,
+)
 from app.providers.llm.base import LLMProvider
 from app.providers.llm.openai_compatible import OpenAICompatibleLLMProvider
 from app.providers.parsers.base import DocumentParser
@@ -29,6 +34,7 @@ from app.repositories.document_repository import DocumentRepository
 from app.repositories.knowledge_base_repository import KnowledgeBaseRepository
 from app.repositories.retrieval_log_repository import RetrievalLogRepository
 from app.services.document_service import DocumentService
+from app.services.hybrid_search_service import HybridSearchService
 from app.services.indexing_service import IndexingService
 from app.services.knowledge_base_service import KnowledgeBaseService
 from app.services.rag_service import RAGService
@@ -74,6 +80,19 @@ def get_vector_store_name() -> str:
     return VECTOR_STORE_NAME if settings.vector_store == "pgvector" else settings.vector_store
 
 
+def get_keyword_search_provider() -> KeywordSearchProvider | None:
+    # 第一版支持 elasticsearch；后续可扩展 opensearch。
+    # 若系统未配置关键词检索 provider，返回 None（索引和检索都不用 keyword search）。
+    if settings.keyword_search_provider == KEYWORD_SEARCH_PROVIDER_NAME:
+        return ElasticsearchKeywordSearchProvider()
+    # 配置为空或未知值时不报错，只记录 None（向后兼容 RETRIEVAL_MODE=vector 场景）。
+    return None
+
+
+def get_keyword_search_provider_name() -> str | None:
+    return KEYWORD_SEARCH_PROVIDER_NAME if settings.keyword_search_provider == KEYWORD_SEARCH_PROVIDER_NAME else None
+
+
 def get_rerank_provider(
     llm_provider: LLMProvider = Depends(get_llm_provider),
 ) -> RerankProvider:
@@ -83,6 +102,10 @@ def get_rerank_provider(
     if settings.rerank_provider == NOOP_PROVIDER_NAME:
         return NoopRerankProvider()
     raise ValueError(f"unsupported RERANK_PROVIDER: {settings.rerank_provider}")
+
+
+def get_hybrid_search_service() -> HybridSearchService:
+    return HybridSearchService()
 
 
 # ----- Service -----
@@ -98,12 +121,14 @@ def get_document_service(
     parser: DocumentParser = Depends(get_document_parser),
     splitter: TextSplitter = Depends(get_text_splitter),
     vector_store: VectorStore = Depends(get_vector_store),
+    keyword_search: KeywordSearchProvider | None = Depends(get_keyword_search_provider),
 ) -> DocumentService:
     indexing = IndexingService(
         parser=parser,
         splitter=splitter,
         embedding_provider=embedding,
         vector_store=vector_store,
+        keyword_search_provider=keyword_search,
     )
     return DocumentService(
         db,
@@ -118,7 +143,10 @@ def get_rag_service(
     embedding: EmbeddingProvider = Depends(get_embedding_provider),
     vector_store: VectorStore = Depends(get_vector_store),
     vector_store_name: str = Depends(get_vector_store_name),
+    keyword_search: KeywordSearchProvider | None = Depends(get_keyword_search_provider),
+    keyword_search_name: str | None = Depends(get_keyword_search_provider_name),
     rerank_provider: RerankProvider = Depends(get_rerank_provider),
+    hybrid_search: HybridSearchService = Depends(get_hybrid_search_service),
 ) -> RAGService:
     return RAGService(
         db,
@@ -127,5 +155,8 @@ def get_rag_service(
         embedding_provider=embedding,
         vector_store=vector_store,
         vector_store_name=vector_store_name,
+        keyword_search_provider=keyword_search,
+        keyword_search_provider_name=keyword_search_name,
         rerank_provider=rerank_provider,
+        hybrid_search_service=hybrid_search,
     )

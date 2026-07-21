@@ -40,6 +40,7 @@ class ErrorCode(Enum):
     DB_ERROR = (30001, "数据库操作失败")
     DATA_DUPLICATE = (30002, "数据已存在")
     VECTOR_STORE_ERROR = (30010, "向量库操作失败")
+    KEYWORD_SEARCH_ERROR = (30020, "关键词检索（Elasticsearch）操作失败")
 
     # ---- 大模型 LLM 40000~49999 ----
     LLM_ERROR = (40000, "大模型调用失败")
