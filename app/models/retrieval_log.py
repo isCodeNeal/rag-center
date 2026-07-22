@@ -22,6 +22,9 @@ class RetrievalLog(Base):
     # user_id —— 由调用方提供；用于记录日志以及未来的 ACL 过滤
     user_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     query: Mapped[str] = mapped_column(Text, nullable=False)
+    # 提问语义优化链路（可空）：LLM 改写后的句子、词表扩展后的最终检索句
+    effective_query: Mapped[str | None] = mapped_column(Text, nullable=True)
+    search_query: Mapped[str | None] = mapped_column(Text, nullable=True)
     # 返回的 chunk 快照（document_id、chunk_id、title、score 等）
     retrieved_chunks: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
     top_k: Mapped[int] = mapped_column(Integer, nullable=False)

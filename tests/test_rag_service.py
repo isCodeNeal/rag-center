@@ -7,6 +7,7 @@ from app.providers.embedding.base import EmbeddingProvider
 from app.providers.rerank.base import RerankProvider
 from app.providers.vectorstores.base import VectorStore
 from app.schemas.rag import RetrieveRequest
+from app.providers.query.pipeline import QueryPipeline
 from app.services.rag_service import RAGService
 
 
@@ -26,9 +27,25 @@ class _FakeEmbedding(EmbeddingProvider):
         return [0.1, 0.2, 0.3]
 
 
+class _FakeKB:
+    def __init__(self, kb_id: str, tenant_id: str):
+        self.id = kb_id
+        self.tenant_id = tenant_id
+        self.name = "退款政策库"
+        self.description = "电商售后相关制度"
+        self.settings: dict = {}
+
+
 class _FakeKBRepo:
     async def get_for_tenant(self, kb_id: str, tenant_id: str):
-        return {"id": kb_id, "tenant_id": tenant_id}
+        return _FakeKB(kb_id, tenant_id)
+
+
+class _FakeLLM:
+    """改写默认关闭，pipeline 不会调用它；仅为构造 QueryPipeline 占位。"""
+
+    async def chat_json(self, *args, **kwargs):
+        raise AssertionError("LLM should not be called when rewrite is disabled")
 
 
 class _FakeLogRepo:
@@ -124,6 +141,7 @@ async def test_rag_service_without_rerank_returns_vector_hits():
         keyword_search_provider_name=None,
         rerank_provider=_NoopRerank(),
         hybrid_search_service=None,  # type: ignore
+        query_pipeline=QueryPipeline(_FakeLLM()),
     )
     data = await svc.retrieve(
         RetrieveRequest(
@@ -155,6 +173,7 @@ async def test_rag_service_with_rerank_returns_rerank_score_and_metadata():
         keyword_search_provider_name=None,
         rerank_provider=_GoodRerank(),
         hybrid_search_service=None,  # type: ignore
+        query_pipeline=QueryPipeline(_FakeLLM()),
     )
     data = await svc.retrieve(
         RetrieveRequest(
@@ -188,6 +207,7 @@ async def test_rag_service_rerank_failure_degrades_to_vector_order():
         keyword_search_provider_name=None,
         rerank_provider=_FailingRerank(),
         hybrid_search_service=None,  # type: ignore
+        query_pipeline=QueryPipeline(_FakeLLM()),
     )
     data = await svc.retrieve(
         RetrieveRequest(

@@ -26,6 +26,14 @@ class KnowledgeBaseRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def update_settings(self, kb_id: str, settings: dict) -> KnowledgeBase | None:
+        kb = await self._session.get(KnowledgeBase, kb_id)
+        if kb is None:
+            return None
+        kb.settings = settings
+        await self._session.flush()
+        return kb
+
     async def list_by_tenant(
         self, tenant_id: str, keyword: str | None = None
     ) -> list[KnowledgeBase]:

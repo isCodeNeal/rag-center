@@ -62,6 +62,12 @@ class Settings(BaseSettings):
     llm_model: str = "deepseek-chat"
     llm_timeout_seconds: int = 60
 
+    # ----- 提问语义优化（query rewrite / 词表扩展）-----
+    # 全局默认关闭 LLM 改写，避免所有请求被动调 LLM；请求级 query_options 可覆盖。
+    # 词表扩展无全局开关，kb 有 settings.synonyms 即尝试。复用上面的 LLM_* 配置。
+    query_rewrite_enabled: bool = False
+    query_rewrite_timeout_ms: int = 2000
+
     # ----- 重排（rerank）-----
     rerank_enabled: bool = False
     # rerank_provider 第一版支持 "llm"（通过 LLMProvider 调用大模型打分）和

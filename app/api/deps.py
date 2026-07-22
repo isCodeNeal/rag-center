@@ -37,6 +37,7 @@ from app.services.document_service import DocumentService
 from app.services.hybrid_search_service import HybridSearchService
 from app.services.indexing_service import IndexingService
 from app.services.knowledge_base_service import KnowledgeBaseService
+from app.providers.query.pipeline import QueryPipeline
 from app.services.rag_service import RAGService
 from app.utils.text_splitter import CharacterTextSplitter, TextSplitter
 
@@ -152,6 +153,7 @@ def get_rag_service(
     keyword_search_name: str | None = Depends(get_keyword_search_provider_name),
     rerank_provider: RerankProvider = Depends(get_rerank_provider),
     hybrid_search: HybridSearchService = Depends(get_hybrid_search_service),
+    llm_provider: LLMProvider = Depends(get_llm_provider),
 ) -> RAGService:
     return RAGService(
         db,
@@ -164,4 +166,5 @@ def get_rag_service(
         keyword_search_provider_name=keyword_search_name,
         rerank_provider=rerank_provider,
         hybrid_search_service=hybrid_search,
+        query_pipeline=QueryPipeline(llm_provider),
     )

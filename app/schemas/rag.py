@@ -7,6 +7,27 @@ from app.schemas.hybrid_search import RetrievalMetadata, RetrievalOptions
 from app.schemas.rerank import RerankMetadata, RerankOptions
 
 
+class QueryOptions(BaseModel):
+    """提问语义优化请求级配置。请求级优先于全局 QUERY_REWRITE_ENABLED。"""
+
+    enabled: bool = False
+    strategy: str = "rewrite"  # 第一版仅 rewrite；noop 等价于不传
+
+
+class QueryProcessing(BaseModel):
+    """检索前提问语义优化链路的诊断信息（供调试台/日志），非业务核心字段。"""
+
+    raw_query: str
+    effective_query: str
+    search_query: str
+    strategy: str
+    rewrite_latency_ms: int
+    degraded: bool
+    degraded_reason: str | None = None
+    synonym_applied: bool
+    synonym_expansions: list[str] = Field(default_factory=list)
+
+
 class RetrieveRequest(BaseModel):
     kb_id: str = Field(..., min_length=1, max_length=64)
     # user_id 由调用方提供；用于记录日志/未来的 ACL
@@ -18,6 +39,8 @@ class RetrieveRequest(BaseModel):
     retrieval_options: RetrievalOptions | None = None
     # 可选的单次请求级 rerank 配置；不传则完全由 .env 系统配置决定
     rerank_options: RerankOptions | None = None
+    # 可选的提问语义优化配置；不传时行为与改前一致
+    query_options: QueryOptions | None = None
 
 
 class RetrievedChunk(BaseModel):
@@ -42,6 +65,8 @@ class RetrieveMetadata(BaseModel):
     latency_ms: int
     retrieval: RetrievalMetadata
     rerank: RerankMetadata
+    # 提问语义优化链路；全无处理时为 None，保持与改前兼容
+    query_processing: QueryProcessing | None = None
 
 
 class RetrieveData(BaseModel):

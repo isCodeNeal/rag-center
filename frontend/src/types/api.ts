@@ -78,6 +78,10 @@ export interface RetrieveRequest {
     enabled?: boolean;
     top_n?: number;
   };
+  query_options?: {
+    enabled?: boolean;
+    strategy?: "noop" | "rewrite";
+  };
 }
 
 export interface RetrievedChunk {
@@ -120,12 +124,24 @@ export interface RerankMetadata {
   error?: string | null;
 }
 
+export interface QueryProcessingMetadata {
+  raw_query: string;
+  effective_query: string;
+  search_query: string;
+  rewrite_latency_ms?: number | null;
+  degraded: boolean;
+  degraded_reason?: string | null;
+  synonym_applied: boolean;
+  synonym_expansions: string[];
+}
+
 export interface RetrieveMetadata {
   top_k: number;
   vector_store: string;
   latency_ms: number;
   retrieval: RetrievalMetadata;
   rerank: RerankMetadata;
+  query_processing?: QueryProcessingMetadata | null;
 }
 
 export interface RetrieveData {

@@ -33,7 +33,10 @@ from app.providers.vectorstores.base import VectorStore
 from app.repositories.knowledge_base_repository import KnowledgeBaseRepository
 from app.repositories.retrieval_log_repository import RetrievalLogRepository
 from app.schemas.hybrid_search import RetrievalMetadata as HybridRetrievalMetadata
+from app.providers.query.base import QueryProcessResult
+from app.providers.query.pipeline import QueryPipeline
 from app.schemas.rag import (
+    QueryProcessing,
     RetrieveData,
     RetrieveMetadata,
     RetrieveRequest,
@@ -60,6 +63,7 @@ class RAGService:
         keyword_search_provider_name: str | None,
         rerank_provider: RerankProvider,
         hybrid_search_service: HybridSearchService,
+        query_pipeline: QueryPipeline,
     ):
         self._session = session
         self._kb_repo = kb_repository
@@ -71,12 +75,24 @@ class RAGService:
         self._keyword_search_name = keyword_search_provider_name
         self._rerank = rerank_provider
         self._hybrid_search = hybrid_search_service
+        self._query_pipeline = query_pipeline
 
     async def retrieve(self, req: RetrieveRequest, tenant_id: str) -> RetrieveData:
         # 校验该租户下知识库是否存在
         kb = await self._kb_repo.get_for_tenant(req.kb_id, tenant_id)
         if kb is None:
             raise KnowledgeBaseNotFound(req.kb_id)
+
+        # 提问语义优化：改写（可选）+ 词表扩展（有 settings 即尝试）。
+        # 改写耗时单独计，不计入下方检索 latency_ms。用 search_query 做检索。
+        qp = await self._query_pipeline.run(
+            req.query,
+            rewrite_enabled=self._resolve_rewrite_enabled(req),
+            kb_name=kb.name,
+            kb_description=kb.description,
+            kb_settings=kb.settings or {},
+        )
+        search_query = qp.search_query
 
         retrieval_mode = self._resolve_retrieval_mode(req)
         top_k = req.top_k or settings.top_k
@@ -93,13 +109,19 @@ class RAGService:
             rerank_enabled,
         )
 
-        # 根据检索模式执行召回
+        # 根据检索模式执行召回（统一使用 search_query）
         if retrieval_mode == "vector":
-            candidates, retrieval_meta = await self._retrieve_vector_only(req, tenant_id, top_k)
+            candidates, retrieval_meta = await self._retrieve_vector_only(
+                req, tenant_id, top_k, search_query
+            )
         elif retrieval_mode == "bm25":
-            candidates, retrieval_meta = await self._retrieve_bm25_only(req, tenant_id, top_k)
+            candidates, retrieval_meta = await self._retrieve_bm25_only(
+                req, tenant_id, top_k, search_query
+            )
         else:  # hybrid
-            candidates, retrieval_meta = await self._retrieve_hybrid(req, tenant_id)
+            candidates, retrieval_meta = await self._retrieve_hybrid(
+                req, tenant_id, search_query
+            )
 
         # 可选 rerank 阶段（精排）
         rerank_meta = RerankMetadata(enabled=rerank_enabled)
@@ -132,6 +154,8 @@ class RAGService:
             kb_id=req.kb_id,
             user_id=req.user_id,
             query=req.query,
+            effective_query=qp.effective_query,
+            search_query=qp.search_query,
             retrieved_chunks=[c.model_dump() for c in retrieved],
             top_k=top_k,
             vector_store=self._vector_store_name,
@@ -160,13 +184,42 @@ class RAGService:
                 latency_ms=latency_ms,
                 retrieval=retrieval_meta,
                 rerank=rerank_meta,
+                query_processing=self._build_query_processing(qp),
             ),
         )
 
+    @staticmethod
+    def _build_query_processing(qp: QueryProcessResult) -> QueryProcessing | None:
+        # 有实际处理（改写、词表命中，或 search_query 与原话不同）时才返回；
+        # 全无处理时返回 None，保持与改造前兼容。
+        touched = (
+            qp.strategy != "noop"
+            or qp.synonym_applied
+            or qp.search_query != qp.raw_query
+        )
+        if not touched:
+            return None
+        return QueryProcessing(
+            raw_query=qp.raw_query,
+            effective_query=qp.effective_query,
+            search_query=qp.search_query,
+            rewrite_latency_ms=qp.rewrite_latency_ms,
+            degraded=qp.degraded,
+            degraded_reason=qp.degraded_reason,
+            synonym_applied=qp.synonym_applied,
+            synonym_expansions=qp.synonym_expansions,
+        )
+
+    def _resolve_rewrite_enabled(self, req: RetrieveRequest) -> bool:
+        # 请求级优先于全局 QUERY_REWRITE_ENABLED。
+        if req.query_options and req.query_options.enabled is not None:
+            return req.query_options.enabled
+        return settings.query_rewrite_enabled
+
     async def _retrieve_vector_only(
-        self, req: RetrieveRequest, tenant_id: str, top_k: int
+        self, req: RetrieveRequest, tenant_id: str, top_k: int, search_query: str
     ) -> tuple[list[dict[str, Any]], HybridRetrievalMetadata]:
-        query_vector = await self._embedding.embed_query(req.query)
+        query_vector = await self._embedding.embed_query(search_query)
         hits = await self._vector_store.similarity_search(
             query_vector,
             tenant_id=tenant_id,
@@ -195,13 +248,13 @@ class RAGService:
         return candidates, meta
 
     async def _retrieve_bm25_only(
-        self, req: RetrieveRequest, tenant_id: str, top_k: int
+        self, req: RetrieveRequest, tenant_id: str, top_k: int, search_query: str
     ) -> tuple[list[dict[str, Any]], HybridRetrievalMetadata]:
         if self._keyword_search is None:
             raise KeywordSearchError("keyword search provider not configured")
 
         hits = await self._keyword_search.keyword_search(
-            query=req.query,
+            query=search_query,
             tenant_id=tenant_id,
             kb_id=req.kb_id,
             top_k=top_k,
@@ -228,7 +281,7 @@ class RAGService:
         return candidates, meta
 
     async def _retrieve_hybrid(
-        self, req: RetrieveRequest, tenant_id: str
+        self, req: RetrieveRequest, tenant_id: str, search_query: str
     ) -> tuple[list[dict[str, Any]], HybridRetrievalMetadata]:
         if self._keyword_search is None:
             raise KeywordSearchError("keyword search provider not configured for hybrid mode")
@@ -249,13 +302,13 @@ class RAGService:
             else settings.hybrid_rrf_k
         )
 
-        # 并行执行向量召回和 BM25 召回
-        query_vector = await self._embedding.embed_query(req.query)
+        # 并行执行向量召回和 BM25 召回（统一使用 search_query）
+        query_vector = await self._embedding.embed_query(search_query)
         vector_task = self._vector_store.similarity_search(
             query_vector, tenant_id=tenant_id, kb_id=req.kb_id, top_k=vector_top_k
         )
         bm25_task = self._keyword_search.keyword_search(
-            query=req.query, tenant_id=tenant_id, kb_id=req.kb_id, top_k=bm25_top_k
+            query=search_query, tenant_id=tenant_id, kb_id=req.kb_id, top_k=bm25_top_k
         )
 
         vector_hits, bm25_hits = None, None

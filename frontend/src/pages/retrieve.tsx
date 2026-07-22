@@ -14,7 +14,13 @@ import {
 } from "@/components/ui/card";
 import { retrieve } from "@/services/rag";
 import { HelpTooltip } from "@/components/help-tooltip";
-import type { RetrieveMode, RetrieveRequest, RetrievedChunk, RetrieveData } from "@/types/api";
+import type {
+  RetrieveMode,
+  RetrieveRequest,
+  RetrievedChunk,
+  RetrieveData,
+  QueryProcessingMetadata,
+} from "@/types/api";
 
 const MODES: RetrieveMode[] = ["vector", "bm25", "hybrid"];
 
@@ -44,6 +50,7 @@ export function RetrievePage() {
   const [rrfK, setRrfK] = React.useState(60);
   const [rerankEnabled, setRerankEnabled] = React.useState(true);
   const [rerankTopN, setRerankTopN] = React.useState(5);
+  const [rewriteEnabled, setRewriteEnabled] = React.useState(false);
 
   const mutation = useMutation<RetrieveData, Error, RetrieveRequest>({
     mutationFn: retrieve,
@@ -66,6 +73,7 @@ export function RetrievePage() {
           : {}),
       },
       ...(rerankEnabled ? { rerank_options: { enabled: true, top_n: rerankTopN } } : {}),
+      ...(rewriteEnabled ? { query_options: { enabled: true, strategy: "rewrite" } } : {}),
     };
     mutation.mutate(payload);
   };
@@ -166,6 +174,20 @@ export function RetrievePage() {
                   </>
                 )}
               </Field>
+
+              <Field
+                label="query 改写"
+                help="用 AI 把口语问题改成更好搜的说法；更慢、消耗 LLM，可对比开关效果。"
+              >
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={rewriteEnabled}
+                    onChange={(e) => setRewriteEnabled(e.target.checked)}
+                  />
+                  启用 query 改写
+                </label>
+              </Field>
             </CardContent>
           )}
         </Card>
@@ -222,6 +244,9 @@ export function RetrievePage() {
                 {result.metadata.retrieval.degraded ? " | ⚠ hybrid degraded" : ""}
                 {result.metadata.rerank.degraded ? " | ⚠ rerank degraded" : ""}
               </div>
+              {result.metadata.query_processing && (
+                <QueryProcessingSummary qp={result.metadata.query_processing} />
+              )}
             </CardContent>
           </Card>
         )}
@@ -250,6 +275,29 @@ function ChunkCard({ rank, chunk }: { rank: number; chunk: RetrievedChunk }) {
         {open ? "收起内容" : "展开内容"}
       </button>
       {open && <p className="mt-1 whitespace-pre-wrap">{chunk.content}</p>}
+    </div>
+  );
+}
+
+function QueryProcessingSummary({ qp }: { qp: QueryProcessingMetadata }) {
+  const rewritten = qp.effective_query !== qp.raw_query;
+  const expanded = qp.search_query !== qp.effective_query;
+  return (
+    <div className="mt-2 space-y-1 border-t pt-2 text-muted-foreground">
+      <div>原话：{qp.raw_query}</div>
+      {rewritten && <div>实际检索句：{qp.effective_query}</div>}
+      {expanded && (
+        <div className="text-foreground">最终检索句：{qp.search_query}</div>
+      )}
+      {qp.rewrite_latency_ms != null && <div>改写耗时 {qp.rewrite_latency_ms}ms</div>}
+      {qp.degraded && (
+        <div className="text-amber-600">
+          ⚠ 改写失败，已用原话检索{qp.degraded_reason ? `（${qp.degraded_reason}）` : ""}
+        </div>
+      )}
+      {qp.synonym_applied && qp.synonym_expansions.length > 0 && (
+        <div>词表扩展：{qp.synonym_expansions.join("、")}</div>
+      )}
     </div>
   );
 }

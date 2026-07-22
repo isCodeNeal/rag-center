@@ -39,6 +39,7 @@ class KnowledgeBaseService:
             tenant_id=tenant_id,
             name=req.name,
             description=req.description,
+            settings={},
         )
         await self._kb_repo.create(kb)
         await self._session.commit()
