@@ -18,6 +18,9 @@ dependencies = [
     "httpx>=0.27",
     # Elasticsearch 8.x 异步客户端（BM25 关键词检索 / 混合检索）
     "elasticsearch[async]>=8.13,<9",
+    # Celery + Redis（异步文档索引）
+    "celery[redis]>=5.4.0",
+    "redis>=5.0.0",
 ]
 
 [project.optional-dependencies]

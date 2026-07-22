@@ -1,7 +1,7 @@
 """Document ORM 模型。"""
 from __future__ import annotations
 
-from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin
@@ -25,3 +25,7 @@ class Document(Base, TimestampMixin):
     status: Mapped[int] = mapped_column(
         Integer, nullable=False, default=DocumentStatus.PROCESSING.value
     )
+    # 原文内容：Worker 异步索引时从这里读取原文（旧数据为空串，只对新上传生效）
+    content: Mapped[str] = mapped_column(Text, nullable=False, server_default="", default="")
+    # 索引失败原因；仅 FAILED 时有值
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)

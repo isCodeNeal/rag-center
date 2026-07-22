@@ -1,6 +1,8 @@
 """文档上传请求/响应 schemas。"""
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -19,3 +21,17 @@ class UploadDocumentData(BaseModel):
     # 1 = SUCCESS（成功）, 2 = FAILED（失败）, 3 = PROCESSING（处理中）
     status: int
     chunk_count: int
+
+
+class DocumentStatusData(BaseModel):
+    """状态查询接口返回；供前端轮询与运维接口复用。"""
+
+    document_id: str
+    kb_id: str
+    title: str
+    # 1 = SUCCESS, 2 = FAILED, 3 = PROCESSING
+    status: int
+    error_message: str | None = None
+    chunk_count: int
+    created_at: datetime
+    updated_at: datetime

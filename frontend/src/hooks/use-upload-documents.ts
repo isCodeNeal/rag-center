@@ -3,7 +3,12 @@ import { uploadDocument } from "@/services/document";
 import { DocumentStatus } from "@/types/api";
 import { fileNameToTitle, isTextFile, readFileAsText } from "@/utils/file";
 
-export type UploadItemStatus = "pending" | "uploading" | "success" | "failed" | "skipped";
+export type UploadItemStatus =
+  | "pending"
+  | "uploading"
+  | "submitted" // 已提交，后台索引中（异步）
+  | "failed"
+  | "skipped";
 
 export interface UploadItem {
   // 相对路径（文件夹上传时带层级），用作展示的唯一名字
@@ -71,9 +76,13 @@ export function useUploadDocuments() {
             title: fileNameToTitle(file.name),
             content,
           });
-          if (data.status === DocumentStatus.SUCCESS) {
+          // 异步索引：收到 PROCESSING 即视为提交成功，真正索引由后台 Worker 完成。
+          if (
+            data.status === DocumentStatus.PROCESSING ||
+            data.status === DocumentStatus.SUCCESS
+          ) {
             update(path, {
-              status: "success",
+              status: "submitted",
               chunkCount: data.chunk_count,
               documentId: data.document_id,
             });

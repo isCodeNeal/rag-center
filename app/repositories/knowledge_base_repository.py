@@ -34,6 +34,10 @@ class KnowledgeBaseRepository:
         await self._session.flush()
         return kb
 
+    async def delete(self, kb: KnowledgeBase) -> None:
+        await self._session.delete(kb)
+        await self._session.flush()
+
     async def list_by_tenant(
         self, tenant_id: str, keyword: str | None = None
     ) -> list[KnowledgeBase]:

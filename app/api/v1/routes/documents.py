@@ -1,4 +1,4 @@
-"""上传文档接口（同步索引）。"""
+"""文档接口：异步上传、状态查询、删除、重试索引。"""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
@@ -6,9 +6,15 @@ from fastapi import APIRouter, Depends
 from app.api.deps import get_document_service
 from app.api.v1.deps import get_current_tenant
 from app.core.auth import TenantContext
+from app.models.enums import DocumentStatus
 from app.schemas.common import ApiResponse
-from app.schemas.document import UploadDocumentData, UploadDocumentRequest
+from app.schemas.document import (
+    DocumentStatusData,
+    UploadDocumentData,
+    UploadDocumentRequest,
+)
 from app.services.document_service import DocumentService
+from app.tasks.indexing import index_document_task
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -19,5 +25,45 @@ async def upload_document(
     ctx: TenantContext = Depends(get_current_tenant),
     service: DocumentService = Depends(get_document_service),
 ) -> ApiResponse[UploadDocumentData]:
-    data = await service.upload(req, ctx.tenant_id)
+    # 只建记录（写入原文 content）并投递异步任务，立即返回 PROCESSING。
+    document = await service.create_document_record(req, ctx.tenant_id)
+    index_document_task.delay(document.id)
+    return ApiResponse.success(
+        UploadDocumentData(
+            document_id=document.id,
+            kb_id=document.kb_id,
+            status=DocumentStatus.PROCESSING.value,
+            chunk_count=0,
+        )
+    )
+
+
+@router.get("/{document_id}", response_model=ApiResponse[DocumentStatusData])
+async def get_document_status(
+    document_id: str,
+    ctx: TenantContext = Depends(get_current_tenant),
+    service: DocumentService = Depends(get_document_service),
+) -> ApiResponse[DocumentStatusData]:
+    data = await service.get_status(document_id, ctx.tenant_id)
+    return ApiResponse.success(data)
+
+
+@router.delete("/{document_id}", response_model=ApiResponse[None])
+async def delete_document(
+    document_id: str,
+    ctx: TenantContext = Depends(get_current_tenant),
+    service: DocumentService = Depends(get_document_service),
+) -> ApiResponse[None]:
+    await service.delete_document(document_id, ctx.tenant_id)
+    return ApiResponse.success(None)
+
+
+@router.post("/{document_id}/reindex", response_model=ApiResponse[DocumentStatusData])
+async def reindex_document(
+    document_id: str,
+    ctx: TenantContext = Depends(get_current_tenant),
+    service: DocumentService = Depends(get_document_service),
+) -> ApiResponse[DocumentStatusData]:
+    data = await service.reindex(document_id, ctx.tenant_id)
+    index_document_task.delay(document_id)
     return ApiResponse.success(data)

@@ -45,6 +45,8 @@ export interface KnowledgeTreeDoc {
   status: number;
   chunk_count: number;
   created_at: string;
+  // 索引失败原因；仅 FAILED 时有值
+  error_message?: string | null;
 }
 
 export interface KnowledgeTreeKb {
@@ -58,6 +60,35 @@ export interface KnowledgeTreeKb {
 export interface KnowledgeTreeTenant {
   tenant_id: string;
   knowledge_bases: KnowledgeTreeKb[];
+}
+
+// ---- 知识库详情 / 更新 ----
+export interface KnowledgeBaseDetailData {
+  kb_id: string;
+  name: string;
+  description?: string | null;
+  settings: Record<string, unknown>;
+  document_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UpdateKnowledgeBaseRequest {
+  name?: string;
+  description?: string;
+  settings?: Record<string, unknown>;
+}
+
+// ---- 文档状态 ----
+export interface DocumentStatusData {
+  document_id: string;
+  kb_id: string;
+  title: string;
+  status: number;
+  error_message?: string | null;
+  chunk_count: number;
+  created_at: string;
+  updated_at: string;
 }
 
 // ---- 检索 ----

@@ -39,6 +39,10 @@ class Settings(BaseSettings):
         "postgresql+psycopg://postgres:postgres@localhost:5432/rag_center"
     )
 
+    # ----- Celery / Redis（异步索引） -----
+    celery_broker_url: str = "redis://localhost:6379/0"
+    celery_result_backend: str = "redis://localhost:6379/1"
+
     # ----- Embedding 提供方（OpenAI 兼容）-----
     model_base_url: str = "https://api.openai.com/v1"
     model_api_key: str = "your-api-key"

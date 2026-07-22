@@ -19,6 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Link } from "react-router-dom";
 import { useUploadDocuments, type UploadItem } from "@/hooks/use-upload-documents";
 
 interface Props {
@@ -26,10 +27,10 @@ interface Props {
   onKbIdChange: (v: string) => void;
 }
 
-function StatusBadge({ item }: { item: UploadItem }) {
+function UploadStatusBadge({ item }: { item: UploadItem }) {
   switch (item.status) {
-    case "success":
-      return <Badge variant="success">成功</Badge>;
+    case "submitted":
+      return <Badge className="bg-blue-500 text-white hover:bg-blue-500/90">已提交</Badge>;
     case "failed":
       return <Badge variant="destructive">失败</Badge>;
     case "skipped":
@@ -61,10 +62,10 @@ export function UploadDocuments({ kbId, onKbIdChange }: Props) {
   };
 
   const summary = React.useMemo(() => {
-    const success = items.filter((i) => i.status === "success").length;
+    const submitted = items.filter((i) => i.status === "submitted").length;
     const failed = items.filter((i) => i.status === "failed").length;
     const skipped = items.filter((i) => i.status === "skipped").length;
-    return { success, failed, skipped, total: items.length };
+    return { submitted, failed, skipped, total: items.length };
   }, [items]);
 
   const done = items.length > 0 && !isUploading;
@@ -74,8 +75,8 @@ export function UploadDocuments({ kbId, onKbIdChange }: Props) {
       <CardHeader>
         <CardTitle>2. 上传文档</CardTitle>
         <CardDescription>
-          支持选择多个文件或整个文件夹（顺序逐个上传）。仅支持文本类文件（.txt / .md /
-          .csv / .json 等），其余文件会被标记为“跳过”。
+          支持选择多个文件或整个文件夹（顺序逐个提交）。仅支持文本类文件（.txt / .md /
+          .csv / .json 等），其余文件会被标记为“跳过”。提交后由后台异步索引，可去列表页查看进度。
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -125,11 +126,21 @@ export function UploadDocuments({ kbId, onKbIdChange }: Props) {
         {items.length > 0 && (
           <div className="space-y-3">
             {done && (
-              <div className="flex flex-wrap gap-2 text-sm">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
                 <span>共 {summary.total} 个：</span>
-                <Badge variant="success">成功 {summary.success}</Badge>
+                <Badge className="bg-blue-500 text-white hover:bg-blue-500/90">
+                  已提交 {summary.submitted}
+                </Badge>
                 <Badge variant="destructive">失败 {summary.failed}</Badge>
                 <Badge variant="secondary">跳过 {summary.skipped}</Badge>
+                {summary.submitted > 0 && (
+                  <Link
+                    to="/knowledge-bases"
+                    className="text-primary underline underline-offset-2"
+                  >
+                    去列表查看进度
+                  </Link>
+                )}
               </div>
             )}
             <Table>
@@ -146,7 +157,7 @@ export function UploadDocuments({ kbId, onKbIdChange }: Props) {
                   <TableRow key={it.path}>
                     <TableCell className="font-mono text-xs">{it.path}</TableCell>
                     <TableCell>
-                      <StatusBadge item={it} />
+                      <UploadStatusBadge item={it} />
                     </TableCell>
                     <TableCell>{it.chunkCount ?? "-"}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{it.error ?? ""}</TableCell>

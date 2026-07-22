@@ -38,6 +38,17 @@ services:
       timeout: 10s
       retries: 12
 
+  redis:
+    image: redis:7-alpine
+    container_name: rag-center-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   api:
     build: .
     container_name: rag-center-api
@@ -45,6 +56,8 @@ services:
       postgres:
         condition: service_healthy
       elasticsearch:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     environment:
       # Inside the compose network the DB host is the service name "postgres".
@@ -83,6 +96,9 @@ services:
       CHUNK_SIZE: ${CHUNK_SIZE:-800}
       CHUNK_OVERLAP: ${CHUNK_OVERLAP:-100}
       TOP_K: ${TOP_K:-5}
+      # Celery / Redis（异步索引）。compose 网络内 Redis 主机名为服务名 "redis"。
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
     ports:
       - "8000:8000"
     # Run migrations then start the API.
