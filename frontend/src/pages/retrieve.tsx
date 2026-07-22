@@ -474,6 +474,11 @@ function ChunkCard({ rank, chunk }: { rank: number; chunk: RetrievedChunk }) {
       <div className="mt-1 text-muted-foreground">
         {chunk.title} / {chunk.document_id} / {chunk.chunk_id}
       </div>
+      {chunk.metadata?.heading_path && (
+        <div style={{fontSize: '0.9em', color: '#666', marginBottom: '8px'}}>
+          所属章节：{chunk.metadata.heading_path} · 块类型：{chunk.metadata.chunk_type || 'section'}
+        </div>
+      )}
       <button
         type="button"
         className="mt-1 text-xs text-primary"

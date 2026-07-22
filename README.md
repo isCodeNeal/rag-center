@@ -432,6 +432,37 @@ curl -s localhost:8000/api/v1/rag/retrieve \
   -d '{"tenant_id":"tenant_demo","kb_id":"<kb_id>","user_id":"user_demo","query":"退款需要几天内申请？"}'
 ```
 
+## 切块策略升级后 reindex
+
+当切块逻辑（如 Markdown 结构化切块）升级后，已有文档的 chunk 仍是旧的字符切结果。需要对知识库批量 reindex：
+
+### 批量 reindex 脚本
+
+```bash
+python scripts/reindex_knowledge_base.py --kb-id <知识库ID>
+
+# 可选：只 reindex 指定文档
+python scripts/reindex_knowledge_base.py --kb-id <知识库ID> --document-id <文档ID1> --document-id <文档ID2>
+
+# 可选：指定租户ID
+python scripts/reindex_knowledge_base.py --kb-id <知识库ID> --tenant-id <租户ID>
+```
+
+### 注意事项
+
+- 已 purge 的文档在 Worker 索引完成前短暂检索不到，建议在低峰期执行
+- `PROCESSING` 中的文档会被跳过，避免重复 reindex
+- 脚本打印每篇文档进度，结束时统计 success / failed / skipped
+
+### 单文档强制 reindex
+
+```bash
+curl -X POST http://localhost:8000/api/v1/documents/{document_id}/reindex \
+  -H "X-API-Key: your-api-key"
+```
+
+现在允许 `SUCCESS` 状态的文档也可强制重建索引。
+
 ## 日志体系
 
 ### 输出与文件

@@ -159,10 +159,10 @@ class DocumentService:
         document = await self._doc_repo.get_for_tenant(document_id, tenant_id)
         if document is None:
             raise DocumentNotFound(document_id)
-        if document.status != DocumentStatus.FAILED.value:
+        if document.status == DocumentStatus.PROCESSING.value:
             raise_error(
                 ErrorCode.PARAM_ERROR,
-                msg="仅索引失败的文档可以重试",
+                msg="文档正在索引中，请稍后再试",
                 detail=f"document_id={document_id} status={document.status}",
             )
         # 清理可能存在的残留 chunk

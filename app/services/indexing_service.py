@@ -12,6 +12,7 @@ service 都不用变。
 """
 from __future__ import annotations
 
+from app.core.config import settings
 from app.core.exceptions import IndexingError
 from app.core.logging import get_logger
 from app.models.document import Document
@@ -20,6 +21,7 @@ from app.providers.keyword_search.base import KeywordSearchProvider
 from app.providers.parsers.base import DocumentParser
 from app.providers.vectorstores.base import VectorStore
 from app.utils.id_generator import new_chunk_id
+from app.utils.markdown_splitter import MarkdownStructuredSplitter
 from app.utils.text_splitter import TextSplitter
 
 logger = get_logger(__name__)
@@ -49,13 +51,20 @@ class IndexingService:
         # 1. 解析为归一化后的纯文本
         text = self._parser.parse(content, source_type=document.source_type)
 
-        # 2. 切分为多个 chunk
-        pieces = self._splitter.split(text)
-        if not pieces:
+        # 2. 切分为多个 chunk（使用 Markdown 结构化切块器）
+        md_splitter = MarkdownStructuredSplitter(
+            chunk_size=settings.chunk_size,
+            chunk_overlap=settings.chunk_overlap,
+            table_max_rows=settings.table_max_rows_per_chunk,
+        )
+        split_pieces = md_splitter.split(text)
+        if not split_pieces:
             raise IndexingError("document produced no chunks after splitting")
 
+        texts = [p.text for p in split_pieces]
+
         # 3. 对所有 chunk 进行 embedding
-        vectors = await self._embedding.embed_texts(pieces)
+        vectors = await self._embedding.embed_texts(texts)
 
         # 4. 构建 chunk payload 并写入向量存储
         chunks = [
@@ -65,11 +74,17 @@ class IndexingService:
                 "kb_id": document.kb_id,
                 "document_id": document.id,
                 "title": document.title,
-                "content": piece,
-                "metadata": {"seq": seq, "source_type": document.source_type},
+                "content": piece.text,
+                "metadata": {
+                    "chunk_index": seq,
+                    "source_type": document.source_type,
+                    "heading_path": piece.metadata.get("heading_path"),
+                    "chunk_type": piece.metadata.get("chunk_type", "section"),
+                    "table_part": piece.metadata.get("table_part"),
+                },
                 "embedding": vector,
             }
-            for seq, (piece, vector) in enumerate(zip(pieces, vectors, strict=True))
+            for seq, (piece, vector) in enumerate(zip(split_pieces, vectors, strict=True))
         ]
         await self._vector_store.add_chunks(chunks)
 

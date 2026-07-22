@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     # ----- 分块 / 检索 -----
     chunk_size: int = 800
     chunk_overlap: int = 100
+    table_max_rows_per_chunk: int = 10
     top_k: int = 5
 
     # ----- 通用大模型 provider（用于 rerank、query rewrite 等能力）-----

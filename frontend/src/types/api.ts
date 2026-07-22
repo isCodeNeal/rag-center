@@ -128,6 +128,7 @@ export interface RetrievedChunk {
   bm25_rank?: number | null;
   retrieval_source?: string | null;
   rerank_score?: number | null;
+  metadata?: { heading_path?: string; chunk_type?: string; [key: string]: unknown } | null;
 }
 
 export interface RetrievalMetadata {
