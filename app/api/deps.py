@@ -34,10 +34,13 @@ from app.repositories.document_repository import DocumentRepository
 from app.repositories.knowledge_base_repository import KnowledgeBaseRepository
 from app.repositories.retrieval_log_repository import RetrievalLogRepository
 from app.services.document_service import DocumentService
+from app.services.feedback_service import FeedbackService
 from app.services.hybrid_search_service import HybridSearchService
 from app.services.indexing_service import IndexingService
 from app.services.knowledge_base_service import KnowledgeBaseService
 from app.providers.query.pipeline import QueryPipeline
+from app.services.quota_service import QuotaService
+from app.services.rate_limit_service import RateLimitService
 from app.services.rag_service import RAGService
 from app.utils.text_splitter import CharacterTextSplitter, TextSplitter
 
@@ -109,6 +112,37 @@ def get_hybrid_search_service() -> HybridSearchService:
     return HybridSearchService()
 
 
+# ----- Redis / 限流 / 配额 -----
+_redis_client = None
+
+
+def get_redis_client():
+    """惰性创建全局共享的 async Redis 客户端（复用 Celery 的 Redis）。"""
+    global _redis_client
+    if _redis_client is None:
+        import redis.asyncio as aioredis
+
+        _redis_client = aioredis.from_url(
+            settings.celery_broker_url, encoding="utf-8", decode_responses=True
+        )
+    return _redis_client
+
+
+def get_rate_limit_service() -> RateLimitService:
+    return RateLimitService(get_redis_client())
+
+
+def get_quota_service(db: AsyncSession = Depends(get_db)) -> QuotaService:
+    return QuotaService(
+        kb_repository=KnowledgeBaseRepository(db),
+        document_repository=DocumentRepository(db),
+    )
+
+
+def get_feedback_service(db: AsyncSession = Depends(get_db)) -> FeedbackService:
+    return FeedbackService(db, retrieval_log_repository=RetrievalLogRepository(db))
+
+
 # ----- Service -----
 def get_knowledge_base_service(
     db: AsyncSession = Depends(get_db),
@@ -158,6 +192,7 @@ def get_rag_service(
     rerank_provider: RerankProvider = Depends(get_rerank_provider),
     hybrid_search: HybridSearchService = Depends(get_hybrid_search_service),
     llm_provider: LLMProvider = Depends(get_llm_provider),
+    rate_limit: RateLimitService = Depends(get_rate_limit_service),
 ) -> RAGService:
     return RAGService(
         db,
@@ -171,4 +206,5 @@ def get_rag_service(
         rerank_provider=rerank_provider,
         hybrid_search_service=hybrid_search,
         query_pipeline=QueryPipeline(llm_provider),
+        rate_limit_service=rate_limit,
     )

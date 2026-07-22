@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useSearchParams } from "react-router-dom";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AppHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
@@ -12,17 +12,28 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { retrieve } from "@/services/rag";
+import { retrieve, submitFeedback } from "@/services/rag";
+import { fetchAuthMe } from "@/services/auth";
 import { HelpTooltip } from "@/components/help-tooltip";
 import type {
+  AuthMeData,
   RetrieveMode,
+  RetrieveProfile,
   RetrieveRequest,
   RetrievedChunk,
   RetrieveData,
   QueryProcessingMetadata,
+  FeedbackRequest,
 } from "@/types/api";
 
 const MODES: RetrieveMode[] = ["vector", "bm25", "hybrid"];
+
+const PROFILES: { value: RetrieveProfile; label: string; desc: string }[] = [
+  { value: "speed", label: "追求速度", desc: "vector 检索，最快" },
+  { value: "balanced", label: "均衡", desc: "hybrid，默认" },
+  { value: "quality", label: "追求质量", desc: "hybrid + rerank + rewrite" },
+  { value: "custom", label: "自定义", desc: "展开下方高级参数手动配置" },
+];
 
 // 100px 右对齐的标签 + 同行控件
 function Field({ label, help, children }: { label: string; help?: string; children: React.ReactNode }) {
@@ -42,6 +53,7 @@ export function RetrievePage() {
   const [kbId, setKbId] = React.useState(() => searchParams.get("kb_id") || "");
   const [query, setQuery] = React.useState("");
   const [configOpen, setConfigOpen] = React.useState(true);
+  const [profile, setProfile] = React.useState<RetrieveProfile>("balanced");
 
   const [topK, setTopK] = React.useState(5);
   const [mode, setMode] = React.useState<RetrieveMode>("hybrid");
@@ -51,9 +63,46 @@ export function RetrievePage() {
   const [rerankEnabled, setRerankEnabled] = React.useState(true);
   const [rerankTopN, setRerankTopN] = React.useState(5);
   const [rewriteEnabled, setRewriteEnabled] = React.useState(false);
+  const [feedbackScore, setFeedbackScore] = React.useState(0);
+  const [feedbackComment, setFeedbackComment] = React.useState("");
+  const [feedbackSubmitted, setFeedbackSubmitted] = React.useState(false);
+
+  const authMe = useQuery({ queryKey: ["auth-me"], queryFn: fetchAuthMe });
+  const features = authMe.data?.features;
+
+  const isProfileAllowed = (p: RetrieveProfile) =>
+    !features || features.allowed_profiles.includes(p);
+
+  // 拉到 plan 后，若当前 profile 不被允许，回落到第一个可用档位。
+  React.useEffect(() => {
+    if (features && !features.allowed_profiles.includes(profile)) {
+      const firstAllowed = PROFILES.find((p) => features.allowed_profiles.includes(p.value));
+      if (firstAllowed) setProfile(firstAllowed.value);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [features]);
+
+  const availableModes = features && !features.hybrid_allowed
+    ? MODES.filter((m) => m !== "hybrid")
+    : MODES;
 
   const mutation = useMutation<RetrieveData, Error, RetrieveRequest>({
     mutationFn: retrieve,
+    onError: (e) => toast.error(e.message),
+    onSuccess: () => {
+      // 新一次检索后清空反馈，避免挂到新 trace 上
+      setFeedbackScore(0);
+      setFeedbackComment("");
+      setFeedbackSubmitted(false);
+    },
+  });
+
+  const feedbackMutation = useMutation<unknown, Error, FeedbackRequest>({
+    mutationFn: submitFeedback,
+    onSuccess: () => {
+      setFeedbackSubmitted(true);
+      toast.success(`已提交反馈 ${feedbackScore} 星`);
+    },
     onError: (e) => toast.error(e.message),
   });
 
@@ -61,10 +110,25 @@ export function RetrievePage() {
     if (!kbId.trim()) return toast.error("请填写 kb_id");
     if (!query.trim()) return toast.error("请填写 query");
 
+    // speed / balanced / quality：只传 profile，由后端 preset 展开。
+    if (profile !== "custom") {
+      mutation.mutate({
+        kb_id: kbId.trim(),
+        user_id: "debug_user",
+        query: query.trim(),
+        profile,
+      });
+      return;
+    }
+
+    // custom：展开高级参数，禁用项不进请求体。
+    const rerankOn = rerankEnabled && (!features || features.rerank_allowed);
+    const rewriteOn = rewriteEnabled && (!features || features.query_rewrite_allowed);
     const payload: RetrieveRequest = {
       kb_id: kbId.trim(),
       user_id: "debug_user",
       query: query.trim(),
+      profile: "custom",
       top_k: topK,
       retrieval_options: {
         mode,
@@ -72,8 +136,8 @@ export function RetrievePage() {
           ? { vector_top_k: vectorTopK, bm25_top_k: bm25TopK, rrf_k: rrfK }
           : {}),
       },
-      ...(rerankEnabled ? { rerank_options: { enabled: true, top_n: rerankTopN } } : {}),
-      ...(rewriteEnabled ? { query_options: { enabled: true, strategy: "rewrite" } } : {}),
+      ...(rerankOn ? { rerank_options: { enabled: true, top_n: rerankTopN } } : {}),
+      ...(rewriteOn ? { query_options: { enabled: true, strategy: "rewrite" } } : {}),
     };
     mutation.mutate(payload);
   };
@@ -98,96 +162,141 @@ export function RetrievePage() {
           </CardHeader>
           {configOpen && (
             <CardContent className="space-y-4">
+              {/* profile 四档单选 */}
+              <Field label="检索档位">
+                <div className="flex flex-wrap gap-2">
+                  {PROFILES.map((p) => {
+                    const allowed = isProfileAllowed(p.value);
+                    return (
+                      <span key={p.value} className="inline-flex items-center gap-1">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={profile === p.value ? "default" : "outline"}
+                          disabled={!allowed}
+                          onClick={() => setProfile(p.value)}
+                          title={p.desc}
+                        >
+                          {p.label}
+                        </Button>
+                        {!allowed && (
+                          <HelpTooltip
+                            text={`当前为${planLabel(authMe.data)}套餐，不支持「${p.label}」。如需使用请升级更高档套餐。`}
+                          />
+                        )}
+                      </span>
+                    );
+                  })}
+                </div>
+              </Field>
+
               <div className="space-y-3 rounded-md border bg-muted/40 p-3">
                 <Field label="kb_id">
                   <Input value={kbId} onChange={(e) => setKbId(e.target.value)} />
                 </Field>
               </div>
 
-              <Field label="top_k" help="召回候选数量。启用 rerank 时建议大于 rerank top_n。">
-                <Input
-                  type="number"
-                  className="w-28"
-                  value={topK}
-                  onChange={(e) => setTopK(Number(e.target.value))}
-                />
-              </Field>
-
-              <Field label="检索模式" help="vector=纯向量语义；bm25=纯关键词；hybrid=两者并行后 RRF 融合。">
-                {MODES.map((m) => (
-                  <Button
-                    key={m}
-                    type="button"
-                    size="sm"
-                    variant={mode === m ? "default" : "outline"}
-                    onClick={() => setMode(m)}
-                  >
-                    {m}
-                  </Button>
-                ))}
-              </Field>
-
-              {mode === "hybrid" && (
-                <Field label="hybrid 参数" help="vector_top_k/bm25_top_k 为两路各自召回数量；rrf_k 为 RRF 融合平滑系数，越大越弱化排名靠前项的权重。">
-                  <label className="text-xs text-muted-foreground">vector_top_k</label>
-                  <Input
-                    type="number"
-                    className="w-20"
-                    value={vectorTopK}
-                    onChange={(e) => setVectorTopK(Number(e.target.value))}
-                  />
-                  <label className="text-xs text-muted-foreground">bm25_top_k</label>
-                  <Input
-                    type="number"
-                    className="w-20"
-                    value={bm25TopK}
-                    onChange={(e) => setBm25TopK(Number(e.target.value))}
-                  />
-                  <label className="text-xs text-muted-foreground">rrf_k</label>
-                  <Input
-                    type="number"
-                    className="w-20"
-                    value={rrfK}
-                    onChange={(e) => setRrfK(Number(e.target.value))}
-                  />
-                </Field>
-              )}
-
-              <Field label="rerank" help="用大模型对候选做精排，top_n 为精排后最终返回条数。">
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={rerankEnabled}
-                    onChange={(e) => setRerankEnabled(e.target.checked)}
-                  />
-                  启用
-                </label>
-                {rerankEnabled && (
-                  <>
-                    <label className="text-xs text-muted-foreground">top_n</label>
+              {/* 高级参数仅在 custom 档展开 */}
+              {profile === "custom" && (
+                <>
+                  <Field label="top_k" help="召回候选数量。启用 rerank 时建议大于 rerank top_n。">
                     <Input
                       type="number"
-                      className="w-20"
-                      value={rerankTopN}
-                      onChange={(e) => setRerankTopN(Number(e.target.value))}
+                      className="w-28"
+                      value={topK}
+                      onChange={(e) => setTopK(Number(e.target.value))}
                     />
-                  </>
-                )}
-              </Field>
+                  </Field>
 
-              <Field
-                label="query 改写"
-                help="用 AI 把口语问题改成更好搜的说法；更慢、消耗 LLM，可对比开关效果。"
-              >
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={rewriteEnabled}
-                    onChange={(e) => setRewriteEnabled(e.target.checked)}
-                  />
-                  启用 query 改写
-                </label>
-              </Field>
+                  <Field label="检索模式" help="vector=纯向量语义；bm25=纯关键词；hybrid=两者并行后 RRF 融合。">
+                    {availableModes.map((m) => (
+                      <Button
+                        key={m}
+                        type="button"
+                        size="sm"
+                        variant={mode === m ? "default" : "outline"}
+                        onClick={() => setMode(m)}
+                      >
+                        {m}
+                      </Button>
+                    ))}
+                  </Field>
+
+                  {mode === "hybrid" && (
+                    <Field label="hybrid 参数" help="vector_top_k/bm25_top_k 为两路各自召回数量；rrf_k 为 RRF 融合平滑系数，越大越弱化排名靠前项的权重。">
+                      <label className="text-xs text-muted-foreground">vector_top_k</label>
+                      <Input
+                        type="number"
+                        className="w-20"
+                        value={vectorTopK}
+                        onChange={(e) => setVectorTopK(Number(e.target.value))}
+                      />
+                      <label className="text-xs text-muted-foreground">bm25_top_k</label>
+                      <Input
+                        type="number"
+                        className="w-20"
+                        value={bm25TopK}
+                        onChange={(e) => setBm25TopK(Number(e.target.value))}
+                      />
+                      <label className="text-xs text-muted-foreground">rrf_k</label>
+                      <Input
+                        type="number"
+                        className="w-20"
+                        value={rrfK}
+                        onChange={(e) => setRrfK(Number(e.target.value))}
+                      />
+                    </Field>
+                  )}
+
+                  <Field label="rerank" help="用大模型对候选做精排，top_n 为精排后最终返回条数。">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={rerankEnabled}
+                        disabled={!!features && !features.rerank_allowed}
+                        onChange={(e) => setRerankEnabled(e.target.checked)}
+                      />
+                      启用
+                    </label>
+                    {features && !features.rerank_allowed && (
+                      <HelpTooltip
+                        text={`当前为${planLabel(authMe.data)}套餐，不支持 rerank。如需使用请升级专业套餐。`}
+                      />
+                    )}
+                    {rerankEnabled && (!features || features.rerank_allowed) && (
+                      <>
+                        <label className="text-xs text-muted-foreground">top_n</label>
+                        <Input
+                          type="number"
+                          className="w-20"
+                          value={rerankTopN}
+                          onChange={(e) => setRerankTopN(Number(e.target.value))}
+                        />
+                      </>
+                    )}
+                  </Field>
+
+                  <Field
+                    label="query 改写"
+                    help="用 AI 把口语问题改成更好搜的说法；更慢、消耗 LLM，可对比开关效果。"
+                  >
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={rewriteEnabled}
+                        disabled={!!features && !features.query_rewrite_allowed}
+                        onChange={(e) => setRewriteEnabled(e.target.checked)}
+                      />
+                      启用 query 改写
+                    </label>
+                    {features && !features.query_rewrite_allowed && (
+                      <HelpTooltip
+                        text={`当前为${planLabel(authMe.data)}套餐，不支持 query 改写。如需使用请升级专业套餐。`}
+                      />
+                    )}
+                  </Field>
+                </>
+              )}
             </CardContent>
           )}
         </Card>
@@ -210,6 +319,28 @@ export function RetrievePage() {
 
             {result && (
               <div className="space-y-3">
+                {/* 反馈区：有结果且 trace_id 存在时显示 */}
+                {result.metadata.trace_id ? (
+                  <FeedbackWidget
+                    score={feedbackScore}
+                    comment={feedbackComment}
+                    submitted={feedbackSubmitted}
+                    loading={feedbackMutation.isPending}
+                    onScore={setFeedbackScore}
+                    onComment={setFeedbackComment}
+                    onSubmit={() =>
+                      feedbackMutation.mutate({
+                        trace_id: result.metadata.trace_id!,
+                        log_id: result.metadata.log_id,
+                        score: feedbackScore,
+                        comment: feedbackComment || undefined,
+                      })
+                    }
+                  />
+                ) : (
+                  <p className="text-xs text-muted-foreground">Langfuse 未启用，不支持反馈。</p>
+                )}
+
                 <div className="text-sm text-muted-foreground">召回结果</div>
                 {result.retrieved_chunks.map((c, i) => (
                   <ChunkCard key={c.chunk_id} rank={i + 1} chunk={c} />
@@ -244,6 +375,15 @@ export function RetrievePage() {
                 {result.metadata.retrieval.degraded ? " | ⚠ hybrid degraded" : ""}
                 {result.metadata.rerank.degraded ? " | ⚠ rerank degraded" : ""}
               </div>
+              {result.metadata.tenant_policy && (
+                <div className="mt-1 border-t pt-1 text-xs text-muted-foreground">
+                  套餐 {result.metadata.tenant_policy.plan} | profile=
+                  {result.metadata.tenant_policy.retrieve_profile} | 生效 mode=
+                  {result.metadata.tenant_policy.effective_mode} | rerank=
+                  {String(result.metadata.tenant_policy.effective_rerank)} | rewrite=
+                  {String(result.metadata.tenant_policy.effective_query_rewrite)}
+                </div>
+              )}
               {result.metadata.query_processing && (
                 <QueryProcessingSummary qp={result.metadata.query_processing} />
               )}
@@ -251,6 +391,73 @@ export function RetrievePage() {
           </Card>
         )}
       </div>
+    </div>
+  );
+}
+
+function planLabel(authMe?: AuthMeData): string {
+  const map: Record<string, string> = { free: "免费", standard: "标准", pro: "专业" };
+  return authMe ? map[authMe.plan] ?? authMe.plan : "当前";
+}
+
+function FeedbackWidget({
+  score,
+  comment,
+  submitted,
+  loading,
+  onScore,
+  onComment,
+  onSubmit,
+}: {
+  score: number;
+  comment: string;
+  submitted: boolean;
+  loading: boolean;
+  onScore: (s: number) => void;
+  onComment: (c: string) => void;
+  onSubmit: () => void;
+}) {
+  if (submitted) {
+    return (
+      <div className="rounded-md border bg-muted/30 p-3 text-sm">
+        已评 {score} 星 ✓
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+      <div className="flex items-center gap-1">
+        {[1, 2, 3, 4, 5].map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => onScore(s)}
+            className={`text-2xl leading-none transition-colors ${
+              s <= score ? "text-yellow-400" : "text-gray-300"
+            }`}
+            aria-label={`${s} 星`}
+          >
+            ★
+          </button>
+        ))}
+        <span className="ml-2 text-xs text-muted-foreground">
+          {score > 0 ? `已选 ${score} 星` : "点击选 1～5 星"}
+        </span>
+      </div>
+      <Textarea
+        rows={2}
+        placeholder="备注（可选）——例如「排第一的 chunk 不是对的文档」"
+        value={comment}
+        onChange={(e) => onComment(e.target.value)}
+        className="text-sm"
+      />
+      <Button
+        size="sm"
+        disabled={score === 0 || loading}
+        onClick={onSubmit}
+      >
+        {loading ? "提交中…" : "提交反馈"}
+      </Button>
     </div>
   );
 }

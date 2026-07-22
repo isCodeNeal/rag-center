@@ -1,6 +1,8 @@
 """RAG 检索请求/响应 schemas。"""
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from app.schemas.hybrid_search import RetrievalMetadata, RetrievalOptions
@@ -41,6 +43,8 @@ class RetrieveRequest(BaseModel):
     rerank_options: RerankOptions | None = None
     # 可选的提问语义优化配置；不传时行为与改前一致
     query_options: QueryOptions | None = None
+    # 检索预设档位；不传时服务端默认 balanced。plan 会校验是否允许该 profile。
+    profile: Literal["speed", "balanced", "quality", "custom"] | None = None
 
 
 class RetrievedChunk(BaseModel):
@@ -59,14 +63,30 @@ class RetrievedChunk(BaseModel):
     rerank_score: float | None = None
 
 
+class TenantPolicy(BaseModel):
+    """本次请求生效的套餐策略，供调试台/日志对照。"""
+
+    plan: str
+    retrieve_profile: str
+    effective_mode: str
+    effective_rerank: bool
+    effective_query_rewrite: bool
+
+
 class RetrieveMetadata(BaseModel):
     top_k: int
     vector_store: str
     latency_ms: int
+    # 本次检索的唯一标识，与 retrieval_logs 表主键一致
+    log_id: str
+    # Langfuse trace 标识；Langfuse 未启用时为 null
+    trace_id: str | None = None
     retrieval: RetrievalMetadata
     rerank: RerankMetadata
     # 提问语义优化链路；全无处理时为 None，保持与改前兼容
     query_processing: QueryProcessing | None = None
+    # 本次生效的套餐策略；未启用套餐能力时为 None
+    tenant_policy: TenantPolicy | None = None
 
 
 class RetrieveData(BaseModel):

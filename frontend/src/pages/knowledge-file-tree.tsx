@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/status-badge";
+import { PlanBadge } from "@/components/plan-badge";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { EditKnowledgeBaseDialog } from "@/components/edit-knowledge-base-dialog";
 import { fetchTree, deleteKnowledgeBase } from "@/services/knowledge-base";
@@ -106,8 +107,13 @@ export function KnowledgeFileTreePage() {
           </div>
           {authMe.data && (
             <div className="flex items-center gap-2">
+              <PlanBadge plan={authMe.data.plan} />
               <Badge>{authMe.data.tenant_name}</Badge>
               <Badge variant="secondary">{authMe.data.tenant_id}</Badge>
+              <span className="text-xs text-muted-foreground">
+                今日检索 {authMe.data.usage.retrieve_daily_count} /{" "}
+                {authMe.data.limits.retrieve_daily}
+              </span>
             </div>
           )}
         </header>

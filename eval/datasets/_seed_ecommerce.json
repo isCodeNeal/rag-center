@@ -1,0 +1,38 @@
+{
+  "_comment": "冷启动种子文件。有足够线上反馈后，新增测例以 export 为主，本文件退为参考。",
+  "name": "ecommerce_retrieval_seed",
+  "kb_id": "REPLACE_WITH_YOUR_KB_ID",
+  "default_profile": "balanced",
+  "cases": [
+    {
+      "id": "seed_refund_deadline",
+      "question": "申请退款的截止时间是什么时候？",
+      "ground_truth": "用户需在订单完成后 7 天内申请退款，超期不予受理。",
+      "source": {
+        "trace_id": null,
+        "feedback_score": null,
+        "feedback_comment": "手工种子"
+      }
+    },
+    {
+      "id": "seed_coupon_stack",
+      "question": "满减和优惠券能同时使用吗？",
+      "ground_truth": "同一订单不可同时使用满减活动与店铺优惠券，二者择一适用。",
+      "source": {
+        "trace_id": null,
+        "feedback_score": null,
+        "feedback_comment": "手工种子"
+      }
+    },
+    {
+      "id": "seed_special_no_return",
+      "question": "哪些商品不支持无理由退款？",
+      "ground_truth": "特殊商品（包括定制类、生鲜类、数字内容）不支持无理由退款，需符合质量问题才可申请。",
+      "source": {
+        "trace_id": null,
+        "feedback_score": null,
+        "feedback_comment": "手工种子"
+      }
+    }
+  ]
+}

@@ -75,3 +75,55 @@ cp .env.example .env    # 修改 VITE_API_TARGET
 npm run build     # tsc 类型检查 + vite 打包到 dist/
 npm run preview   # 预览打包产物
 ```
+
+---
+
+## 离线测评
+
+基于 RAGAS 的离线检索质量评测。使用前需安装 eval 依赖：
+
+```bash
+pip install -e ".[eval]"
+```
+
+### 三步流程
+
+**1. 从 Langfuse 导出低分 case（需 Langfuse 已部署并有反馈数据）**
+
+```bash
+python scripts/export_eval_cases_from_langfuse.py \
+  --max-score 3 --days 30 \
+  --kb-id YOUR_KB_ID \
+  --output eval/datasets/imported_from_feedback.json
+```
+
+**2. 人工补 `ground_truth`**，然后合并进主集：
+
+```bash
+python scripts/export_eval_cases_from_langfuse.py \
+  --max-score 3 \
+  --merge eval/datasets/ecommerce_retrieval.json \
+  --output eval/datasets/ecommerce_retrieval.json
+```
+
+**3. 运行评测**
+
+```bash
+python scripts/run_retrieval_eval.py \
+  --dataset eval/datasets/ecommerce_retrieval.json \
+  --api-key rk_live_你的key \
+  --profile balanced \
+  --output eval/reports/balanced.json
+```
+
+改配置（词表/profile）前后各跑一遍对比：
+
+```bash
+python scripts/run_retrieval_eval.py --dataset ... --profile balanced \
+  --output eval/reports/before_synonyms.json
+# （改完配置）
+python scripts/run_retrieval_eval.py --dataset ... --profile balanced \
+  --output eval/reports/after_synonyms.json
+```
+
+评测报告在 `eval/reports/`（已加入 `.gitignore`）。测例种子见 `eval/datasets/_seed_ecommerce.json`。

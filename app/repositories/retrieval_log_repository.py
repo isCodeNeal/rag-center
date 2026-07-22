@@ -14,3 +14,6 @@ class RetrievalLogRepository:
         self._session.add(log)
         await self._session.flush()
         return log
+
+    async def get(self, log_id: str) -> RetrievalLog | None:
+        return await self._session.get(RetrievalLog, log_id)

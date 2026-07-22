@@ -35,7 +35,13 @@ class ErrorCode(Enum):
     API_REQUEST_ERROR = (20001, "接口请求失败")
     API_TIMEOUT = (20002, "接口请求超时")
     API_RATE_LIMIT = (20003, "接口调用超限")
+    RETRIEVE_RATE_LIMIT = (20005, "检索请求过于频繁，请稍后再试")
     API_KEY_INVALID = (20010, "API Key 无效或未授权")
+    FEATURE_NOT_ALLOWED = (20013, "当前套餐不支持该功能")
+    QUOTA_EXCEEDED = (20014, "已超出套餐配额")
+    FEEDBACK_FAILED = (20020, "反馈写入失败，Langfuse 不可用或写入异常")
+    FEEDBACK_INVALID = (20021, "log_id 与 trace_id 不匹配，或当前租户无权操作")
+    SCORE_OUT_OF_RANGE = (20022, "score 必须在 1～5 之间")
 
     # ---- 数据库 / 存储 30000~39999 ----
     DB_ERROR = (30001, "数据库操作失败")

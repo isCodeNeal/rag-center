@@ -149,8 +149,10 @@ async def test_rag_service_without_rerank_returns_vector_hits():
             user_id="u-1",
             query="退款需要几天内申请？",
             rerank_options={"enabled": False, "top_n": 1},
+            profile="custom",
         ),
         "tenant_demo",
+        "pro",
     )
     assert len(data.retrieved_chunks) == 1
     assert data.retrieved_chunks[0].chunk_id == "chunk-1"
@@ -182,8 +184,10 @@ async def test_rag_service_with_rerank_returns_rerank_score_and_metadata():
             query="退款需要几天内申请？",
             top_k=2,
             rerank_options={"enabled": True, "top_n": 1},
+            profile="custom",
         ),
         "tenant_demo",
+        "pro",
     )
     assert len(data.retrieved_chunks) == 1
     assert data.retrieved_chunks[0].chunk_id == "chunk-2"
@@ -216,8 +220,10 @@ async def test_rag_service_rerank_failure_degrades_to_vector_order():
             query="退款需要几天内申请？",
             top_k=2,
             rerank_options={"enabled": True, "top_n": 1},
+            profile="custom",
         ),
         "tenant_demo",
+        "pro",
     )
     assert len(data.retrieved_chunks) == 1
     # 降级后沿用原向量排序

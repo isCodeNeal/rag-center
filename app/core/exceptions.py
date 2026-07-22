@@ -115,3 +115,38 @@ class Unauthorized(AppException):
     def __init__(self, detail: str | None = None):
         super().__init__(ErrorCode.API_KEY_INVALID, detail=detail)
 
+
+class FeatureNotAllowed(AppException):
+    """请求用到了当前套餐（plan）不允许的功能。对外返回 code 20013。"""
+
+    def __init__(self, msg: str | None = None, detail: str | None = None):
+        super().__init__(ErrorCode.FEATURE_NOT_ALLOWED, msg=msg, detail=detail)
+
+
+class QuotaExceeded(AppException):
+    """库数 / 文档数 / 并发索引 / 日检索量等配额超限。对外返回 code 20014。"""
+
+    def __init__(self, msg: str | None = None, detail: str | None = None):
+        super().__init__(ErrorCode.QUOTA_EXCEEDED, msg=msg, detail=detail)
+
+
+class RetrieveRateLimited(AppException):
+    """检索 QPS 超限。对外返回 code 20005。"""
+
+    def __init__(self, msg: str | None = None, detail: str | None = None):
+        super().__init__(ErrorCode.RETRIEVE_RATE_LIMIT, msg=msg, detail=detail)
+
+
+class FeedbackFailed(AppException):
+    """反馈写入失败（Langfuse 不可用 / 写入异常）。对外返回 code 20020。"""
+
+    def __init__(self, detail: str | None = None):
+        super().__init__(ErrorCode.FEEDBACK_FAILED, detail=detail)
+
+
+class FeedbackInvalid(AppException):
+    """log_id 与 trace_id 不匹配，或当前租户无权操作。对外返回 code 20021。"""
+
+    def __init__(self, detail: str | None = None):
+        super().__init__(ErrorCode.FEEDBACK_INVALID, detail=detail)
+

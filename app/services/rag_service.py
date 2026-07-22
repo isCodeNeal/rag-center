@@ -24,6 +24,7 @@ from app.core.config import settings
 from app.core.exceptions import KeywordSearchError, KnowledgeBaseNotFound, RerankError
 from app.core.logging import get_logger
 from app.models.retrieval_log import RetrievalLog
+from app.observability.langfuse_client import RetrieveObservability
 from app.providers.embedding.base import EmbeddingProvider
 from app.providers.keyword_search.base import KeywordSearchProvider
 from app.providers.rerank.base import RerankProvider
@@ -41,9 +42,17 @@ from app.schemas.rag import (
     RetrieveMetadata,
     RetrieveRequest,
     RetrievedChunk,
+    TenantPolicy,
 )
 from app.schemas.rerank import RerankMetadata
 from app.services.hybrid_search_service import HybridSearchService
+from app.tenant.plan_resolver import resolve_plan
+from app.tenant.retrieve_presets import (
+    DEFAULT_PROFILE,
+    PROFILE_CUSTOM,
+    RETRIEVE_PROFILE_PRESETS,
+)
+from app.core.exceptions import FeatureNotAllowed
 from app.utils.id_generator import new_retrieval_log_id
 
 logger = get_logger(__name__)
@@ -64,6 +73,7 @@ class RAGService:
         rerank_provider: RerankProvider,
         hybrid_search_service: HybridSearchService,
         query_pipeline: QueryPipeline,
+        rate_limit_service=None,
     ):
         self._session = session
         self._kb_repo = kb_repository
@@ -76,34 +86,66 @@ class RAGService:
         self._rerank = rerank_provider
         self._hybrid_search = hybrid_search_service
         self._query_pipeline = query_pipeline
+        self._rate_limit = rate_limit_service
 
-    async def retrieve(self, req: RetrieveRequest, tenant_id: str) -> RetrieveData:
+    async def retrieve(
+        self, req: RetrieveRequest, tenant_id: str, plan: str = "free"
+    ) -> RetrieveData:
         # 校验该租户下知识库是否存在
         kb = await self._kb_repo.get_for_tenant(req.kb_id, tenant_id)
         if kb is None:
             raise KnowledgeBaseNotFound(req.kb_id)
 
+        # 1~5. 解析 plan，校验 profile，展开成生效参数并校验是否超出 plan 上限。
+        plan_ctx = resolve_plan(plan)
+        profile, retrieval_mode, top_k, rerank_enabled, rewrite_enabled = (
+            self._resolve_profile_and_options(req, plan_ctx)
+        )
+
+        # 6. QPS / 日配额限流（限流失败在检索前抛出，不消耗日计数）。
+        if self._rate_limit is not None:
+            await self._rate_limit.check_retrieve(tenant_id, plan_ctx)
+
+        # Langfuse trace 开启（LANGFUSE_ENABLED=false 时静默无操作）
+        obs = RetrieveObservability(
+            metadata={
+                "tenant_id": tenant_id,
+                "kb_id": req.kb_id,
+                "user_id": req.user_id,
+                "profile": profile,
+                "plan": plan_ctx.plan,
+            }
+        )
+
         # 提问语义优化：改写（可选）+ 词表扩展（有 settings 即尝试）。
         # 改写耗时单独计，不计入下方检索 latency_ms。用 search_query 做检索。
         qp = await self._query_pipeline.run(
             req.query,
-            rewrite_enabled=self._resolve_rewrite_enabled(req),
+            rewrite_enabled=rewrite_enabled,
             kb_name=kb.name,
             kb_description=kb.description,
             kb_settings=kb.settings or {},
         )
         search_query = qp.search_query
 
-        retrieval_mode = self._resolve_retrieval_mode(req)
-        top_k = req.top_k or settings.top_k
-        rerank_enabled = self._resolve_rerank_enabled(req)
+        obs.record_query_processing(
+            raw_query=qp.raw_query,
+            effective_query=qp.effective_query,
+            search_query=qp.search_query,
+            synonym_applied=qp.synonym_applied,
+            synonym_expansions=qp.synonym_expansions,
+            degraded=qp.degraded,
+        )
+
         top_n = self._resolve_top_n(req, top_k)
         started = time.perf_counter()
 
         logger.info(
-            "HYBRID_SEARCH_START | kb_id=%s | user_id=%s | mode=%s | top_k=%d | rerank=%s",
+            "HYBRID_SEARCH_START | kb_id=%s | user_id=%s | plan=%s | profile=%s | mode=%s | top_k=%d | rerank=%s",
             req.kb_id,
             req.user_id,
+            plan_ctx.plan,
+            profile,
             retrieval_mode,
             top_k,
             rerank_enabled,
@@ -123,9 +165,23 @@ class RAGService:
                 req, tenant_id, search_query
             )
 
+        obs.record_retrieval(
+            mode=retrieval_meta.mode,
+            vector_count=retrieval_meta.vector_count,
+            bm25_count=retrieval_meta.bm25_count,
+            fused_count=retrieval_meta.fused_count,
+            degraded=retrieval_meta.degraded,
+        )
+
         # 可选 rerank 阶段（精排）
         rerank_meta = RerankMetadata(enabled=rerank_enabled)
         final_chunks = await self._apply_rerank(candidates, req, rerank_enabled, top_n, rerank_meta)
+
+        obs.record_rerank(
+            enabled=rerank_meta.enabled,
+            candidate_count=rerank_meta.candidate_count,
+            degraded=rerank_meta.degraded,
+        )
 
         latency_ms = int((time.perf_counter() - started) * 1000)
 
@@ -147,15 +203,24 @@ class RAGService:
             for h in final_chunks
         ]
 
-        # 记录 retrieval log（尽力而为的可观测性埋点）
+        # Langfuse trace 写入，返回 trace_id（失败时返回 None，不影响主流程）
+        chunk_summaries = [
+            {"chunk_id": c.chunk_id, "score": c.score} for c in retrieved[:10]
+        ]
+        trace_id = obs.finish(chunk_summaries=chunk_summaries)
+
+        # 记录 retrieval log；log.id 作为 log_id 返回给调用方
+        log_id = new_retrieval_log_id()
         log = RetrievalLog(
-            id=new_retrieval_log_id(),
+            id=log_id,
             tenant_id=tenant_id,
             kb_id=req.kb_id,
             user_id=req.user_id,
             query=req.query,
             effective_query=qp.effective_query,
             search_query=qp.search_query,
+            trace_id=trace_id,
+            profile=profile,
             retrieved_chunks=[c.model_dump() for c in retrieved],
             top_k=top_k,
             vector_store=self._vector_store_name,
@@ -164,8 +229,12 @@ class RAGService:
         await self._log_repo.create(log)
         await self._session.commit()
 
+        # 8. 检索成功后给当日计数 +1（被拒绝/失败的请求不会走到这里）。
+        if self._rate_limit is not None:
+            await self._rate_limit.record_retrieve_success(tenant_id)
+
         logger.info(
-            "RAG_RETRIEVE | kb_id=%s | user_id=%s | mode=%s | top_k=%d | returned=%d | rerank=%s | cost=%dms",
+            "RAG_RETRIEVE | kb_id=%s | user_id=%s | mode=%s | top_k=%d | returned=%d | rerank=%s | cost=%dms | log_id=%s | trace_id=%s",
             req.kb_id,
             req.user_id,
             retrieval_mode,
@@ -173,6 +242,16 @@ class RAGService:
             len(retrieved),
             rerank_enabled,
             latency_ms,
+            log_id,
+            trace_id,
+        )
+        # 9. 响应带回本次生效的套餐策略。
+        tenant_policy = TenantPolicy(
+            plan=plan_ctx.plan,
+            retrieve_profile=profile,
+            effective_mode=retrieval_mode,
+            effective_rerank=rerank_enabled,
+            effective_query_rewrite=rewrite_enabled,
         )
         return RetrieveData(
             query=req.query,
@@ -182,11 +261,71 @@ class RAGService:
                 top_k=top_k,
                 vector_store=self._vector_store_name,
                 latency_ms=latency_ms,
+                log_id=log_id,
+                trace_id=trace_id,
                 retrieval=retrieval_meta,
                 rerank=rerank_meta,
                 query_processing=self._build_query_processing(qp),
+                tenant_policy=tenant_policy,
             ),
         )
+
+    def _resolve_profile_and_options(
+        self, req: RetrieveRequest, plan_ctx
+    ) -> tuple[str, str, int, bool, bool]:
+        """按 plan 校验 profile，展开成 (profile, mode, top_k, rerank_enabled, rewrite_enabled)。
+
+        - profile 未传默认 balanced。
+        - profile 不在 plan 允许列表 → FeatureNotAllowed(20013)。
+        - profile 非 custom → 按 retrieve_presets 展开固定 options。
+        - custom → 用请求里已有的 options（受下面 plan 上限约束）。
+        - plan ceiling 优先于 .env 全局开关：功能不允许时强制关闭，
+          若 custom 主动开启了不允许的能力 → FeatureNotAllowed。
+        """
+        profile = req.profile or DEFAULT_PROFILE
+        if profile not in plan_ctx.features.allowed_profiles:
+            raise FeatureNotAllowed(
+                msg=f"当前套餐（{plan_ctx.plan}）不支持 {profile} 检索档位，请升级套餐",
+                detail=f"profile={profile} allowed={plan_ctx.features.allowed_profiles}",
+            )
+
+        if profile != PROFILE_CUSTOM:
+            preset = RETRIEVE_PROFILE_PRESETS[profile]
+            mode = preset["mode"]
+            top_k = preset["top_k"]
+            rerank_enabled = preset["rerank_enabled"]
+            rewrite_enabled = preset["query_rewrite_enabled"]
+        else:
+            # custom：用请求里已有的 options（回退到 .env 全局默认）。
+            mode = self._resolve_retrieval_mode(req)
+            top_k = req.top_k or settings.top_k
+            rerank_enabled = self._resolve_rerank_enabled(req)
+            rewrite_enabled = self._resolve_rewrite_enabled(req)
+
+        # plan ceiling 校验：任何被展开/请求打开的能力都不能超出 plan 上限。
+        if mode == "hybrid" and not plan_ctx.features.hybrid_allowed:
+            if profile == PROFILE_CUSTOM:
+                raise FeatureNotAllowed(
+                    msg=f"当前套餐（{plan_ctx.plan}）不支持 hybrid 检索，请升级套餐",
+                    detail="hybrid not allowed",
+                )
+            mode = "vector"  # preset 理论上不会触发，防御性降级
+        if rerank_enabled and not plan_ctx.features.rerank_allowed:
+            if profile == PROFILE_CUSTOM:
+                raise FeatureNotAllowed(
+                    msg=f"当前套餐（{plan_ctx.plan}）不支持 rerank，请升级套餐",
+                    detail="rerank not allowed",
+                )
+            rerank_enabled = False
+        if rewrite_enabled and not plan_ctx.features.query_rewrite_allowed:
+            if profile == PROFILE_CUSTOM:
+                raise FeatureNotAllowed(
+                    msg=f"当前套餐（{plan_ctx.plan}）不支持 query 改写，请升级套餐",
+                    detail="query_rewrite not allowed",
+                )
+            rewrite_enabled = False
+
+        return profile, mode, top_k, rerank_enabled, rewrite_enabled
 
     @staticmethod
     def _build_query_processing(qp: QueryProcessResult) -> QueryProcessing | None:

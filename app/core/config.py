@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     celery_broker_url: str = "redis://localhost:6379/0"
     celery_result_backend: str = "redis://localhost:6379/1"
 
+    # ----- Langfuse 可观测性 -----
+    langfuse_enabled: bool = False
+    langfuse_host: str = "http://localhost:3000"
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+
     # ----- Embedding 提供方（OpenAI 兼容）-----
     model_base_url: str = "https://api.openai.com/v1"
     model_api_key: str = "your-api-key"

@@ -113,6 +113,7 @@ export interface RetrieveRequest {
     enabled?: boolean;
     strategy?: "noop" | "rewrite";
   };
+  profile?: RetrieveProfile;
 }
 
 export interface RetrievedChunk {
@@ -170,9 +171,35 @@ export interface RetrieveMetadata {
   top_k: number;
   vector_store: string;
   latency_ms: number;
+  log_id: string;
+  trace_id?: string | null;
   retrieval: RetrievalMetadata;
   rerank: RerankMetadata;
   query_processing?: QueryProcessingMetadata | null;
+  tenant_policy?: TenantPolicy | null;
+}
+
+export interface TenantPolicy {
+  plan: string;
+  retrieve_profile: string;
+  effective_mode: string;
+  effective_rerank: boolean;
+  effective_query_rewrite: boolean;
+}
+
+// ---- 检索反馈 ----
+export interface FeedbackRequest {
+  trace_id: string;
+  log_id?: string | null;
+  score: number; // 1–5
+  comment?: string | null;
+}
+
+export interface FeedbackData {
+  feedback_id: string;
+  trace_id: string;
+  log_id?: string | null;
+  score: number;
 }
 
 export interface RetrieveData {
@@ -182,9 +209,31 @@ export interface RetrieveData {
   metadata: RetrieveMetadata;
 }
 
+export type RetrieveProfile = "speed" | "balanced" | "quality" | "custom";
+
+export type TenantPlan = "free" | "standard" | "pro";
+
 export interface AuthMeData {
   tenant_id: string;
   tenant_name: string;
   key_prefix: string;
   key_name: string;
+  plan: TenantPlan;
+  features: {
+    allowed_profiles: string[];
+    hybrid_allowed: boolean;
+    rerank_allowed: boolean;
+    query_rewrite_allowed: boolean;
+  };
+  limits: {
+    retrieve_qps: number;
+    retrieve_daily: number;
+    max_kb: number;
+    max_documents_per_kb: number;
+    max_processing_documents: number;
+  };
+  usage: {
+    kb_count: number;
+    retrieve_daily_count: number;
+  };
 }

@@ -17,6 +17,8 @@ class Tenant(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     # active / disabled；disabled 后该租户下所有 Key 失效
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
+    # 套餐档位：free / standard / pro；决定配额与功能上限，由脚本维护。
+    plan: Mapped[str] = mapped_column(String(32), nullable=False, default="free", server_default="free")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

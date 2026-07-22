@@ -4,3 +4,6 @@ dist/
 .env.local
 *.log
 .DS_Store
+
+# 评测报告（由 run_retrieval_eval.py 生成，不入版本库）
+eval/reports/

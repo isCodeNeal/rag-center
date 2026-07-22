@@ -25,6 +25,8 @@ class TenantContext:
     key_id: str
     key_prefix: str
     key_name: str
+    # 套餐档位：free / standard / pro
+    plan: str = "free"
 
 
 def hash_api_key(plaintext: str) -> str:
@@ -63,12 +65,14 @@ async def resolve_tenant(
 ) -> TenantContext:
     """从请求头解析当前租户。AUTH_ENABLED=false 时固定返回默认租户。"""
     if not auth_enabled:
+        # AUTH_ENABLED=false 时固定使用内置默认租户，并按最高档 pro 执行 enforcement。
         return TenantContext(
             tenant_id=DEFAULT_TENANT_ID,
             tenant_name=DEFAULT_TENANT_ID,
             key_id="",
             key_prefix="",
             key_name="",
+            plan="pro",
         )
 
     token = _parse_bearer(authorization)
@@ -88,4 +92,5 @@ async def resolve_tenant(
         key_id=api_key.id,
         key_prefix=api_key.key_prefix,
         key_name=api_key.name,
+        plan=getattr(tenant, "plan", None) or "free",
     )

@@ -48,6 +48,25 @@ def client():
     return TestClient(app)
 
 
+class _NoQuota:
+    """放行所有配额检查，让 KB 接口测试聚焦响应外壳本身。"""
+
+    async def check_can_create_kb(self, tenant_id, plan):
+        return None
+
+
+def _override_quota():
+    from app.api.deps import get_quota_service
+
+    app.dependency_overrides[get_quota_service] = lambda: _NoQuota()
+
+
+def _clear_quota():
+    from app.api.deps import get_quota_service
+
+    app.dependency_overrides.pop(get_quota_service, None)
+
+
 def test_health(client):
     resp = client.get("/health")
     assert resp.status_code == 200
@@ -57,6 +76,7 @@ def test_health(client):
 def test_create_kb_success(client):
     app.dependency_overrides[get_knowledge_base_service] = lambda: _FakeKBService()
     app.dependency_overrides[get_current_tenant] = lambda: _FAKE_CTX
+    _override_quota()
     try:
         resp = client.post(
             "/api/v1/knowledge-bases/create",
@@ -65,6 +85,7 @@ def test_create_kb_success(client):
     finally:
         app.dependency_overrides.pop(get_knowledge_base_service, None)
         app.dependency_overrides.pop(get_current_tenant, None)
+        _clear_quota()
 
     assert resp.status_code == 200
     body = resp.json()
@@ -94,6 +115,7 @@ def test_create_kb_validation_error(client):
 def test_business_error_envelope(client):
     app.dependency_overrides[get_knowledge_base_service] = lambda: _FailingKBService()
     app.dependency_overrides[get_current_tenant] = lambda: _FAKE_CTX
+    _override_quota()
     try:
         resp = client.post(
             "/api/v1/knowledge-bases/create",
@@ -102,6 +124,7 @@ def test_business_error_envelope(client):
     finally:
         app.dependency_overrides.pop(get_knowledge_base_service, None)
         app.dependency_overrides.pop(get_current_tenant, None)
+        _clear_quota()
 
     assert resp.status_code == 200
     body = resp.json()

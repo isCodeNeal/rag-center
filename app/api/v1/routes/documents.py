@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from app.api.deps import get_document_service
+from app.api.deps import get_document_service, get_quota_service
 from app.api.v1.deps import get_current_tenant
 from app.core.auth import TenantContext
 from app.models.enums import DocumentStatus
@@ -14,6 +14,8 @@ from app.schemas.document import (
     UploadDocumentRequest,
 )
 from app.services.document_service import DocumentService
+from app.services.quota_service import QuotaService
+from app.tenant.plan_resolver import resolve_plan
 from app.tasks.indexing import index_document_task
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -24,7 +26,10 @@ async def upload_document(
     req: UploadDocumentRequest,
     ctx: TenantContext = Depends(get_current_tenant),
     service: DocumentService = Depends(get_document_service),
+    quota: QuotaService = Depends(get_quota_service),
 ) -> ApiResponse[UploadDocumentData]:
+    # 单库文档数 + 并发 PROCESSING 配额检查
+    await quota.check_can_upload(ctx.tenant_id, req.kb_id, resolve_plan(ctx.plan))
     # 只建记录（写入原文 content）并投递异步任务，立即返回 PROCESSING。
     document = await service.create_document_record(req, ctx.tenant_id)
     index_document_task.delay(document.id)
@@ -63,7 +68,10 @@ async def reindex_document(
     document_id: str,
     ctx: TenantContext = Depends(get_current_tenant),
     service: DocumentService = Depends(get_document_service),
+    quota: QuotaService = Depends(get_quota_service),
 ) -> ApiResponse[DocumentStatusData]:
+    # 并发 PROCESSING 配额检查（reindex 会新占一个索引名额）
+    await quota.check_processing_capacity(ctx.tenant_id, resolve_plan(ctx.plan))
     data = await service.reindex(document_id, ctx.tenant_id)
     index_document_task.delay(document_id)
     return ApiResponse.success(data)

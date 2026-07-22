@@ -25,6 +25,10 @@ class RetrievalLog(Base):
     # 提问语义优化链路（可空）：LLM 改写后的句子、词表扩展后的最终检索句
     effective_query: Mapped[str | None] = mapped_column(Text, nullable=True)
     search_query: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 可观测性：Langfuse trace 标识（未启用时为 null）
+    trace_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # 本次使用的检索策略档位（balanced / quality / speed / custom）
+    profile: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # 返回的 chunk 快照（document_id、chunk_id、title、score 等）
     retrieved_chunks: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
     top_k: Mapped[int] = mapped_column(Integer, nullable=False)

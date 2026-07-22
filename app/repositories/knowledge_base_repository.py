@@ -1,7 +1,7 @@
 """KnowledgeBase 数据访问。"""
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.knowledge_base import KnowledgeBase
@@ -37,6 +37,13 @@ class KnowledgeBaseRepository:
     async def delete(self, kb: KnowledgeBase) -> None:
         await self._session.delete(kb)
         await self._session.flush()
+
+    async def count_by_tenant(self, tenant_id: str) -> int:
+        stmt = select(func.count()).select_from(KnowledgeBase).where(
+            KnowledgeBase.tenant_id == tenant_id
+        )
+        result = await self._session.execute(stmt)
+        return int(result.scalar_one())
 
     async def list_by_tenant(
         self, tenant_id: str, keyword: str | None = None

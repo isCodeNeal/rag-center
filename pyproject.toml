@@ -21,6 +21,8 @@ dependencies = [
     # Celery + Redis（异步文档索引）
     "celery[redis]>=5.4.0",
     "redis>=5.0.0",
+    # Langfuse 可观测性（检索 trace）
+    "langfuse>=2.0.0,<3.0.0",
 ]
 
 [project.optional-dependencies]
@@ -29,6 +31,10 @@ dev = [
     "pytest-asyncio>=0.23",
     "anyio>=4.0",
     "ruff>=0.5",
+]
+eval = [
+    "ragas>=0.2.0",
+    "datasets>=2.0.0",
 ]
 
 [build-system]

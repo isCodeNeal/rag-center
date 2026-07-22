@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from app.api.deps import get_knowledge_base_service
+from app.api.deps import get_knowledge_base_service, get_quota_service
 from app.api.v1.deps import get_current_tenant
 from app.core.auth import TenantContext
 from app.schemas.common import ApiResponse
@@ -15,6 +15,8 @@ from app.schemas.knowledge_base import (
     UpdateKnowledgeBaseRequest,
 )
 from app.services.knowledge_base_service import KnowledgeBaseService
+from app.services.quota_service import QuotaService
+from app.tenant.plan_resolver import resolve_plan
 
 router = APIRouter(prefix="/knowledge-bases", tags=["knowledge-bases"])
 
@@ -24,7 +26,9 @@ async def create_knowledge_base(
     req: CreateKnowledgeBaseRequest,
     ctx: TenantContext = Depends(get_current_tenant),
     service: KnowledgeBaseService = Depends(get_knowledge_base_service),
+    quota: QuotaService = Depends(get_quota_service),
 ) -> ApiResponse[KnowledgeBaseData]:
+    await quota.check_can_create_kb(ctx.tenant_id, resolve_plan(ctx.plan))
     data = await service.create(req, ctx.tenant_id)
     return ApiResponse.success(data)
 

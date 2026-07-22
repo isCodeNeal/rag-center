@@ -75,14 +75,28 @@ def client(monkeypatch):
     return TestClient(app)
 
 
+class _NoQuota:
+    async def check_can_upload(self, tenant_id, kb_id, plan):
+        return None
+
+    async def check_processing_capacity(self, tenant_id, plan):
+        return None
+
+
 def _override(svc):
+    from app.api.deps import get_quota_service
+
     app.dependency_overrides[get_document_service] = lambda: svc
     app.dependency_overrides[get_current_tenant] = lambda: _FAKE_CTX
+    app.dependency_overrides[get_quota_service] = lambda: _NoQuota()
 
 
 def _clear():
+    from app.api.deps import get_quota_service
+
     app.dependency_overrides.pop(get_document_service, None)
     app.dependency_overrides.pop(get_current_tenant, None)
+    app.dependency_overrides.pop(get_quota_service, None)
 
 
 def test_upload_returns_processing(client):

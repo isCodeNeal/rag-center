@@ -14,9 +14,9 @@ async def _main(tenant_id: str, name: str) -> None:
         repo = TenantRepository(session)
         if await repo.get(tenant_id) is not None:
             raise SystemExit(f"租户已存在：{tenant_id}")
-        await repo.create(Tenant(id=tenant_id, name=name, status="active"))
+        await repo.create(Tenant(id=tenant_id, name=name, status="active", plan="free"))
         await session.commit()
-    print(f"已创建租户 id={tenant_id} name={name}")
+    print(f"已创建租户 id={tenant_id} name={name} plan=free")
 
 
 if __name__ == "__main__":

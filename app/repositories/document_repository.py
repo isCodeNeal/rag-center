@@ -1,7 +1,7 @@
 """Document 数据访问。"""
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.document import Document
@@ -11,6 +11,23 @@ from app.models.enums import DocumentStatus
 class DocumentRepository:
     def __init__(self, session: AsyncSession):
         self._session = session
+
+    async def count_by_kb(self, kb_id: str) -> int:
+        stmt = select(func.count()).select_from(Document).where(Document.kb_id == kb_id)
+        result = await self._session.execute(stmt)
+        return int(result.scalar_one())
+
+    async def count_processing_by_tenant(self, tenant_id: str) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(Document)
+            .where(
+                Document.tenant_id == tenant_id,
+                Document.status == DocumentStatus.PROCESSING.value,
+            )
+        )
+        result = await self._session.execute(stmt)
+        return int(result.scalar_one())
 
     async def create(self, document: Document) -> Document:
         self._session.add(document)
