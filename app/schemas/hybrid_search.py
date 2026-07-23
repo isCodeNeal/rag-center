@@ -38,3 +38,7 @@ class RetrievalMetadata(BaseModel):
     # hybrid 模式下 BM25 失败降级为纯向量时置为 True
     degraded: bool = False
     degraded_reason: str | None = None
+    # 多库并行召回时的扩展字段
+    multi_kb: bool = False
+    kb_count: int | None = None
+    per_kb_top_k: int | None = None

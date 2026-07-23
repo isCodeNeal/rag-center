@@ -34,6 +34,8 @@ class RetrievalLog(Base):
     top_k: Mapped[int] = mapped_column(Integer, nullable=False)
     vector_store: Mapped[str] = mapped_column(String(64), nullable=False)
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 多库检索：参与本次检索的所有 kb_id 列表（单库时为 null）
+    kb_ids: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

@@ -3,8 +3,9 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
+from app.core.error_codes import ErrorCode
 from app.schemas.hybrid_search import RetrievalMetadata, RetrievalOptions
 from app.schemas.rerank import RerankMetadata, RerankOptions
 
@@ -31,7 +32,10 @@ class QueryProcessing(BaseModel):
 
 
 class RetrieveRequest(BaseModel):
-    kb_id: str = Field(..., min_length=1, max_length=64)
+    # kb_id 改为非必填，兼容旧调用；kb_ids 优先级高于 kb_id
+    kb_id: str = Field("", max_length=64)
+    # 新增多库检索支持；传入时忽略 kb_id
+    kb_ids: list[str] | None = Field(default=None)
     # user_id 由调用方提供；用于记录日志/未来的 ACL
     user_id: str = Field(..., min_length=1, max_length=128)
     query: str = Field(..., min_length=1)
@@ -46,6 +50,14 @@ class RetrieveRequest(BaseModel):
     # 检索预设档位；不传时服务端默认 balanced。plan 会校验是否允许该 profile。
     profile: Literal["speed", "balanced", "quality", "custom"] | None = None
 
+    @model_validator(mode="after")
+    def _validate_kb_ids(self) -> "RetrieveRequest":
+        """校验 kb_ids 非空列表；若传了 kb_ids=[] 则报错。"""
+        if self.kb_ids is not None and len(self.kb_ids) == 0:
+            from app.core.exceptions import AppException
+            raise AppException(ErrorCode.PARAM_ERROR, msg="kb_ids 不能为空列表")
+        return self
+
 
 class RetrievedChunk(BaseModel):
     document_id: str
@@ -53,6 +65,9 @@ class RetrievedChunk(BaseModel):
     title: str
     content: str
     score: float
+    # 来源库信息（多库检索时填充）
+    kb_id: str | None = None
+    kb_name: str | None = None
     # 混合检索相关字段（未启用时为 None）
     vector_score: float | None = None
     bm25_score: float | None = None
@@ -91,6 +106,7 @@ class RetrieveMetadata(BaseModel):
 
 class RetrieveData(BaseModel):
     query: str
-    kb_id: str
+    kb_id: str   # 保留，兼容旧调用方；多库时取 kb_ids[0]
+    kb_ids: list[str] = Field(default_factory=list)  # 新增，多库检索时填充
     retrieved_chunks: list[RetrievedChunk]
     metadata: RetrieveMetadata

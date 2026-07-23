@@ -432,6 +432,22 @@ curl -s localhost:8000/api/v1/rag/retrieve \
   -d '{"tenant_id":"tenant_demo","kb_id":"<kb_id>","user_id":"user_demo","query":"退款需要几天内申请？"}'
 ```
 
+### 多库联合检索
+
+```bash
+curl -X POST http://localhost:8000/api/v1/rag/retrieve \
+  -H "Authorization: Bearer rk_live_your_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "kb_ids": ["kb_ecommerce_id", "kb_customer_service_id"],
+    "user_id": "user_demo",
+    "query": "退款时会员补偿怎么算？",
+    "profile": "balanced"
+  }'
+```
+
+兼容旧调用：传单个 `kb_id` 与 `kb_ids: ["<单id>"]` 效果一致。
+
 ## 切块策略升级后 reindex
 
 当切块逻辑（如 Markdown 结构化切块）升级后，已有文档的 chunk 仍是旧的字符切结果。需要对知识库批量 reindex：

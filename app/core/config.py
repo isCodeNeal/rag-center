@@ -112,6 +112,9 @@ class Settings(BaseSettings):
     hybrid_bm25_top_k: int = 20
     hybrid_top_n: int = 20  # 融合后默认返回候选数量
 
+    # ----- 多库并行召回 -----
+    multi_kb_max: int = 5  # 可通过 MULTI_KB_MAX 环境变量覆盖
+
     @property
     def async_database_url(self) -> str:
         """异步 SQLAlchemy engine 使用的 URL。

@@ -26,6 +26,7 @@ PLAN_PRESETS: dict[str, dict] = {
             "max_kb": 1,
             "max_documents_per_kb": 30,
             "max_processing_documents": 1,
+            "max_kb_per_retrieve": 1,
         },
     },
     PLAN_STANDARD: {
@@ -41,6 +42,7 @@ PLAN_PRESETS: dict[str, dict] = {
             "max_kb": 5,
             "max_documents_per_kb": 200,
             "max_processing_documents": 2,
+            "max_kb_per_retrieve": 3,
         },
     },
     PLAN_PRO: {
@@ -56,6 +58,7 @@ PLAN_PRESETS: dict[str, dict] = {
             "max_kb": 50,
             "max_documents_per_kb": 5000,
             "max_processing_documents": 10,
+            "max_kb_per_retrieve": 5,
         },
     },
 }

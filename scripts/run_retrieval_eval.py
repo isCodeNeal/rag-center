@@ -26,17 +26,21 @@ def retrieve_chunks(
     base_url: str,
     api_key: str,
     kb_id: str,
+    kb_ids: list[str] | None = None,
     question: str,
     profile: str,
 ) -> list[str]:
-    """调 /api/v1/rag/retrieve，返回 chunk 正文列表。"""
+    """调 /api/v1/rag/retrieve，返回 chunk 正文列表。支持单库（kb_id）和多库（kb_ids）。"""
     url = f"{base_url.rstrip('/')}/api/v1/rag/retrieve"
-    payload = {
-        "kb_id": kb_id,
+    payload: dict = {
         "user_id": "eval_runner",
         "query": question,
         "profile": profile,
     }
+    if kb_ids and len(kb_ids) > 1:
+        payload["kb_ids"] = kb_ids
+    else:
+        payload["kb_id"] = kb_ids[0] if kb_ids else kb_id
     try:
         resp = httpx.post(
             url,
@@ -92,11 +96,15 @@ def run_eval(
     for case in runnable:
         q = case["question"]
         gt = case["ground_truth"]
-        print(f"  ↳ {q[:60]}…")
+        case_kb_id = case.get("kb_id", kb_id)
+        case_kb_ids = case.get("kb_ids") or ([case_kb_id] if case_kb_id else None)
+        is_multi_kb = bool(case_kb_ids and len(case_kb_ids) > 1)
+        print(f"  ↳ {'[多库] ' if is_multi_kb else ''}{q[:60]}…")
         contexts = retrieve_chunks(
             base_url=base_url,
             api_key=api_key,
-            kb_id=kb_id,
+            kb_id=case_kb_id,
+            kb_ids=case_kb_ids,
             question=q,
             profile=effective_profile,
         )
@@ -105,6 +113,7 @@ def run_eval(
             "answer": "",  # rag-center 不生成答案
             "contexts": contexts,
             "ground_truth": gt,
+            "multi_kb": is_multi_kb,
         })
 
     # RAGAS 评测
@@ -153,6 +162,7 @@ def run_eval(
                 {
                     "id": runnable[i].get("id"),
                     "question": runnable[i]["question"],
+                    "multi_kb": samples[i].get("multi_kb", False),
                     "context_precision": scores[i].get("context_precision"),
                     "context_recall": scores[i].get("context_recall"),
                 }

@@ -95,7 +95,8 @@ export interface DocumentStatusData {
 export type RetrieveMode = "vector" | "bm25" | "hybrid";
 
 export interface RetrieveRequest {
-  kb_id: string;
+  kb_id?: string;
+  kb_ids?: string[];
   user_id: string;
   query: string;
   top_k?: number;
@@ -129,6 +130,8 @@ export interface RetrievedChunk {
   retrieval_source?: string | null;
   rerank_score?: number | null;
   metadata?: { heading_path?: string; chunk_type?: string; [key: string]: unknown } | null;
+  kb_id?: string;
+  kb_name?: string;
 }
 
 export interface RetrievalMetadata {
@@ -144,6 +147,9 @@ export interface RetrievalMetadata {
   fused_count?: number | null;
   degraded: boolean;
   degraded_reason?: string | null;
+  multi_kb?: boolean;
+  kb_count?: number;
+  fusion_strategy?: string;
 }
 
 export interface RerankMetadata {
@@ -206,6 +212,7 @@ export interface FeedbackData {
 export interface RetrieveData {
   query: string;
   kb_id: string;
+  kb_ids?: string[];
   retrieved_chunks: RetrievedChunk[];
   metadata: RetrieveMetadata;
 }

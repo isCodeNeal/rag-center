@@ -1,0 +1,26 @@
+{
+  "_comment": "跨库 golden case 测试集。kb_ids 中的占位符需替换为实际知识库 ID，可用 create_kb.py 或管理页面创建后填入。",
+  "name": "multi_kb_retrieval",
+  "description": "必须跨库才能答全的测例，用于量化多库检索的效果增益",
+  "default_profile": "balanced",
+  "cases": [
+    {
+      "id": "cross_kb_refund_vip_001",
+      "question": "退款时限和会员积分补偿标准各是什么？",
+      "kb_ids": ["<REPLACE_WITH_ECOMMERCE_KB_ID>", "<REPLACE_WITH_CUSTOMER_SERVICE_KB_ID>"],
+      "ground_truth": "用户可在订单完成后 7 天内申请退款；会员等级不同时，积分补偿比例不同，具体以会员权益说明为准。单库只能获取其中一方面的信息，需要跨库才能完整回答。"
+    },
+    {
+      "id": "cross_kb_discount_sla_002",
+      "question": "满减活动规则和客服工单处理时效分别是怎样的？",
+      "kb_ids": ["<REPLACE_WITH_ECOMMERCE_KB_ID>", "<REPLACE_WITH_CUSTOMER_SERVICE_KB_ID>"],
+      "ground_truth": "满减活动规则由电商规则库定义；客服工单处理时效由客服知识库定义。两类信息分属不同领域，单库检索只能覆盖一半。"
+    },
+    {
+      "id": "cross_kb_return_process_003",
+      "question": "商品退货流程和退款到账时间各是什么？",
+      "kb_ids": ["<REPLACE_WITH_ECOMMERCE_KB_ID>", "<REPLACE_WITH_CUSTOMER_SERVICE_KB_ID>"],
+      "ground_truth": "退货流程涉及提交申请、商家审核、寄回商品等步骤；退款到账时间根据支付方式不同有差异。完整回答需要跨库检索。"
+    }
+  ]
+}

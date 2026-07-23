@@ -14,9 +14,11 @@ import {
 } from "@/components/ui/card";
 import { retrieve, submitFeedback } from "@/services/rag";
 import { fetchAuthMe } from "@/services/auth";
+import { fetchTree } from "@/services/knowledge-base";
 import { HelpTooltip } from "@/components/help-tooltip";
 import type {
   AuthMeData,
+  KnowledgeTreeTenant,
   RetrieveMode,
   RetrieveProfile,
   RetrieveRequest,
@@ -50,7 +52,11 @@ function Field({ label, help, children }: { label: string; help?: string; childr
 
 export function RetrievePage() {
   const [searchParams] = useSearchParams();
-  const [kbId, setKbId] = React.useState(() => searchParams.get("kb_id") || "");
+  const [selectedKbIds, setSelectedKbIds] = React.useState<string[]>(() => {
+    const fromUrl = searchParams.get("kb_id");
+    return fromUrl ? [fromUrl] : [];
+  });
+  const [multiKbError, setMultiKbError] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
   const [configOpen, setConfigOpen] = React.useState(true);
   const [profile, setProfile] = React.useState<RetrieveProfile>("balanced");
@@ -70,6 +76,12 @@ export function RetrievePage() {
   const authMe = useQuery({ queryKey: ["auth-me"], queryFn: fetchAuthMe });
   const features = authMe.data?.features;
 
+  // 拉取当前 tenant 的知识库列表，用于多选 Checkbox
+  const kbTreeQuery = useQuery({ queryKey: ["kb-tree"], queryFn: () => fetchTree() });
+  const kbList = (kbTreeQuery.data ?? []).flatMap(
+    (t: KnowledgeTreeTenant) => t.knowledge_bases
+  );
+
   const isProfileAllowed = (p: RetrieveProfile) =>
     !features || features.allowed_profiles.includes(p);
 
@@ -88,7 +100,13 @@ export function RetrievePage() {
 
   const mutation = useMutation<RetrieveData, Error, RetrieveRequest>({
     mutationFn: retrieve,
-    onError: (e) => toast.error(e.message),
+    onError: (e) => {
+      if (e.message.includes("最多支持") || e.message.includes("20013")) {
+        setMultiKbError(e.message);
+      } else {
+        toast.error(e.message);
+      }
+    },
     onSuccess: () => {
       // 新一次检索后清空反馈，避免挂到新 trace 上
       setFeedbackScore(0);
@@ -107,13 +125,23 @@ export function RetrievePage() {
   });
 
   const onSubmit = () => {
-    if (!kbId.trim()) return toast.error("请填写 kb_id");
+    if (selectedKbIds.length === 0) {
+      setMultiKbError("请选择至少一个知识库");
+      return;
+    }
+    setMultiKbError(null);
     if (!query.trim()) return toast.error("请填写 query");
+
+    // 单库兼容旧格式，多库传 kb_ids
+    const kbPayload =
+      selectedKbIds.length === 1
+        ? { kb_id: selectedKbIds[0] }
+        : { kb_ids: selectedKbIds };
 
     // speed / balanced / quality：只传 profile，由后端 preset 展开。
     if (profile !== "custom") {
       mutation.mutate({
-        kb_id: kbId.trim(),
+        ...kbPayload,
         user_id: "debug_user",
         query: query.trim(),
         profile,
@@ -125,7 +153,7 @@ export function RetrievePage() {
     const rerankOn = rerankEnabled && (!features || features.rerank_allowed);
     const rewriteOn = rewriteEnabled && (!features || features.query_rewrite_allowed);
     const payload: RetrieveRequest = {
-      kb_id: kbId.trim(),
+      ...kbPayload,
       user_id: "debug_user",
       query: query.trim(),
       profile: "custom",
@@ -191,8 +219,41 @@ export function RetrievePage() {
               </Field>
 
               <div className="space-y-3 rounded-md border bg-muted/40 p-3">
-                <Field label="kb_id">
-                  <Input value={kbId} onChange={(e) => setKbId(e.target.value)} />
+                <Field label="检索范围">
+                  {kbTreeQuery.isLoading ? (
+                    <span className="text-sm text-muted-foreground">加载知识库列表…</span>
+                  ) : kbList.length === 0 ? (
+                    <span className="text-sm text-muted-foreground">暂无知识库，请先创建</span>
+                  ) : (
+                    <div className="space-y-1 max-h-40 overflow-y-auto border rounded p-2 w-full">
+                      {kbList.map((kb) => (
+                        <label
+                          key={kb.kb_id}
+                          className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/50 px-1 py-0.5 rounded"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedKbIds.includes(kb.kb_id)}
+                            onChange={(e) => {
+                              setSelectedKbIds((prev) =>
+                                e.target.checked
+                                  ? [...prev, kb.kb_id]
+                                  : prev.filter((id) => id !== kb.kb_id)
+                              );
+                              setMultiKbError(null);
+                            }}
+                          />
+                          <span>{kb.name}</span>
+                          <span className="text-xs text-muted-foreground font-mono">
+                            {kb.kb_id.slice(0, 8)}…
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  {multiKbError && (
+                    <p className="text-sm text-destructive mt-1">{multiKbError}</p>
+                  )}
                 </Field>
               </div>
 
@@ -361,8 +422,10 @@ export function RetrievePage() {
             </CardHeader>
             <CardContent className="space-y-1 text-sm">
               <div>
-                mode={result.metadata.retrieval.mode} | top_k={result.metadata.top_k} | 服务端耗时{" "}
-                {result.metadata.latency_ms}ms
+                mode={result.metadata.retrieval.mode} | top_k={result.metadata.top_k}
+                {result.metadata.retrieval.multi_kb &&
+                  ` | 联查 ${result.metadata.retrieval.kb_count} 个库 | 融合: ${result.metadata.retrieval.fusion_strategy}`}
+                {" | 服务端耗时 "}{result.metadata.latency_ms}ms
               </div>
               <div className="text-muted-foreground">
                 vector:{result.metadata.retrieval.vector_count ?? "—"} bm25:
@@ -465,12 +528,18 @@ function FeedbackWidget({
 function ChunkCard({ rank, chunk }: { rank: number; chunk: RetrievedChunk }) {
   const [open, setOpen] = React.useState(false);
   const fmt = (v?: number | null) => (v === null || v === undefined ? "—" : v.toFixed(2));
+  const kbLabel = chunk.kb_name || (chunk.kb_id ? chunk.kb_id.slice(0, 8) : null);
   return (
     <div className="rounded-md border bg-background p-3 text-sm">
       <div className="font-mono text-xs">
         #{rank} score={fmt(chunk.score)} vector={fmt(chunk.vector_score)} bm25=
         {fmt(chunk.bm25_score)} rerank={fmt(chunk.rerank_score)}
       </div>
+      {kbLabel && (
+        <span className="inline-block rounded px-1.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 mr-2 mt-1">
+          {kbLabel}
+        </span>
+      )}
       <div className="mt-1 text-muted-foreground">
         {chunk.title} / {chunk.document_id} / {chunk.chunk_id}
       </div>

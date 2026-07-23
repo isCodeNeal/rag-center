@@ -88,7 +88,11 @@ def export_cases(
 
         meta = trace.get("metadata") or {}
         this_kb_id = meta.get("kb_id", "")
-        if kb_id and this_kb_id != kb_id:
+        this_kb_ids: list[str] = meta.get("kb_ids") or (
+            [this_kb_id] if this_kb_id else []
+        )
+        # kb_id 过滤：单库或多库中任一匹配即保留
+        if kb_id and kb_id not in this_kb_ids:
             continue
 
         question = (trace.get("input") or {}).get("query") or ""
@@ -96,10 +100,17 @@ def export_cases(
             # 从 trace input 顶层尝试
             question = str(trace.get("input", "")) if isinstance(trace.get("input"), str) else ""
 
+        # 多库 trace 用 kb_ids 字段，单库用 kb_id 保持兼容
+        kb_field: dict = (
+            {"kb_ids": this_kb_ids}
+            if len(this_kb_ids) > 1
+            else {"kb_id": this_kb_ids[0] if this_kb_ids else ""}
+        )
         case = {
             "id": f"lf_{trace_id[:8]}",
             "question": question,
             "ground_truth": "",  # 待人工填写
+            **kb_field,
             "source": {
                 "trace_id": trace_id,
                 "feedback_score": score_item.get("value"),
