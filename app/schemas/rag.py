@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core.error_codes import ErrorCode
 from app.schemas.hybrid_search import RetrievalMetadata, RetrievalOptions
@@ -39,6 +39,15 @@ class RetrieveRequest(BaseModel):
     # user_id 由调用方提供；用于记录日志/未来的 ACL
     user_id: str = Field(..., min_length=1, max_length=128)
     query: str = Field(..., min_length=1)
+
+    @field_validator("query")
+    @classmethod
+    def validate_query(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("query 不能为空或仅含空白字符")
+        # 长度校验在 service 层用 settings.query_max_length 做，这里只做空白检查
+        return v
     # 可选的单次请求级 TOP_K 覆盖配置（向量召回候选数量；启用 rerank 时建议大于 top_n）
     top_k: int | None = Field(default=None, ge=1, le=100)
     # 可选的单次请求级检索配置（检索模式、混合检索 top_k 等）

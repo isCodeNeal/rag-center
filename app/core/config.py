@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     chunk_overlap: int = 100
     table_max_rows_per_chunk: int = 10
     top_k: int = 5
+    query_max_length: int = 2000
 
     # ----- 通用大模型 provider（用于 rerank、query rewrite 等能力）-----
     # llm_provider 第一版仅支持 "openai_compatible"；DeepSeek、百炼等兼容 OpenAI

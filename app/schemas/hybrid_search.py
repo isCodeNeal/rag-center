@@ -42,3 +42,8 @@ class RetrievalMetadata(BaseModel):
     multi_kb: bool = False
     kb_count: int | None = None
     per_kb_top_k: int | None = None
+    # 多库 partial 容错时的失败库列表
+    failed_kb_ids: list[str] | None = None
+    partial_kb_success: bool = False
+    # 空结果原因
+    empty_reason: str | None = None  # "no_indexed_chunks" | "no_chunks_matched"

@@ -97,6 +97,13 @@ class RAGService:
     async def retrieve(
         self, req: RetrieveRequest, tenant_id: str, plan: str = "free"
     ) -> RetrieveData:
+        # query 边界校验
+        if len(req.query) > settings.query_max_length:
+            raise_error(
+                ErrorCode.PARAM_ERROR,
+                msg=f"query 过长，最大允许 {settings.query_max_length} 个字符，当前 {len(req.query)} 个",
+            )
+
         # 解析 kb_ids（兼容单 kb_id）
         kb_ids: list[str] = req.kb_ids if req.kb_ids else ([req.kb_id] if req.kb_id else [])
         if not kb_ids:
@@ -217,6 +224,17 @@ class RAGService:
             degraded=rerank_meta.degraded,
         )
 
+        # 空结果原因标注
+        if not final_chunks:
+            # 简化实现：有候选但召回为空 → no_chunks_matched；没有候选 → no_indexed_chunks
+            # 实际区分 no_indexed_chunks 需要查 chunk count，此处按 candidates 为空来近似
+            empty_reason = "no_indexed_chunks" if not candidates else "no_chunks_matched"
+            retrieval_meta.empty_reason = empty_reason
+            logger.info(
+                "RETRIEVE_EMPTY | kb_ids=%s | user_id=%s | reason=%s",
+                kb_ids, req.user_id, empty_reason,
+            )
+
         latency_ms = int((time.perf_counter() - started) * 1000)
 
         # 组装响应（带 kb_id / kb_name 来源信息）
@@ -336,11 +354,14 @@ class RAGService:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         all_candidates: list[list[dict]] = []
+        failed_kb_ids: list[str] = []
+
         for kid, result in zip(kb_ids, results):
             if isinstance(result, Exception):
                 logger.error(
                     "MULTI_KB_RETRIEVE_FAILED | kb_id=%s | error=%s", kid, result
                 )
+                failed_kb_ids.append(kid)
                 continue
             kb_candidates, _ = result
             kb_name = kb_map[kid].name if kid in kb_map else kid
@@ -348,6 +369,15 @@ class RAGService:
                 c["kb_id"] = kid
                 c["kb_name"] = kb_name
             all_candidates.append(kb_candidates)
+
+        # 全部失败 → 拒绝
+        if not all_candidates:
+            raise_error(
+                ErrorCode.VECTOR_STORE_ERROR,
+                msg=f"所有知识库检索均失败，failed_kb_ids={failed_kb_ids}",
+            )
+
+        partial = len(failed_kb_ids) > 0
 
         fused = self._fuse_multi_kb_rrf(all_candidates, top_n=top_k, rrf_k=settings.hybrid_rrf_k)
 
@@ -364,6 +394,10 @@ class RAGService:
             fusion="rrf",
             rrf_k=settings.hybrid_rrf_k,
             fused_count=len(fused),
+            failed_kb_ids=failed_kb_ids if failed_kb_ids else None,
+            partial_kb_success=partial,
+            degraded=partial,
+            degraded_reason=f"kb(s) failed: {failed_kb_ids}" if partial else None,
         )
         return fused, meta
 
@@ -596,37 +630,78 @@ class RAGService:
             else settings.hybrid_rrf_k
         )
 
-        # 并行执行向量召回和 BM25 召回（统一使用 search_query）
-        query_vector = await self._embedding.embed_query(search_query)
-        vector_task = self._vector_store.similarity_search(
-            query_vector, tenant_id=tenant_id, kb_id=effective_kb_id, top_k=vector_top_k
-        )
-        bm25_task = self._keyword_search.keyword_search(
-            query=search_query, tenant_id=tenant_id, kb_id=effective_kb_id, top_k=bm25_top_k
-        )
-
-        vector_hits, bm25_hits = None, None
+        # 分别捕获两路失败，支持双向降级
+        vector_hits: list[dict] = []
+        bm25_hits: list[dict] = []
+        vector_failed = False
         bm25_failed = False
+
+        # 向量召回（含 embed_query）
         try:
-            vector_hits, bm25_hits = await asyncio.gather(vector_task, bm25_task)
-            logger.info(
-                "VECTOR_SEARCH_SUCCESS | kb_id=%s | count=%d", effective_kb_id, len(vector_hits)
+            query_vector = await self._embedding.embed_query(search_query)
+            vector_hits = await self._vector_store.similarity_search(
+                query_vector, tenant_id=tenant_id, kb_id=effective_kb_id, top_k=vector_top_k
+            )
+            logger.info("VECTOR_SEARCH_SUCCESS | kb_id=%s | count=%d", effective_kb_id, len(vector_hits))
+        except Exception as exc:
+            vector_failed = True
+            logger.error(
+                "VECTOR_SEARCH_FAILED | kb_id=%s | user_id=%s | error=%s",
+                effective_kb_id, req.user_id, exc,
+            )
+
+        # BM25 召回
+        try:
+            bm25_hits = await self._keyword_search.keyword_search(
+                query=search_query, tenant_id=tenant_id, kb_id=effective_kb_id, top_k=bm25_top_k
             )
             logger.info("BM25_SEARCH_SUCCESS | kb_id=%s | count=%d", effective_kb_id, len(bm25_hits))
-        except KeywordSearchError as exc:
-            # BM25 失败不影响主链路：记录日志并降级为纯向量结果。
+        except Exception as exc:
+            bm25_failed = True
             logger.error(
                 "BM25_SEARCH_FAILED | kb_id=%s | user_id=%s | error=%s",
-                effective_kb_id,
-                req.user_id,
-                str(exc),
+                effective_kb_id, req.user_id, exc,
             )
-            bm25_failed = True
-            vector_hits = await vector_task  # 确保向量召回完成
 
-        # RRF 融合
-        if bm25_failed or bm25_hits is None:
-            # 降级为纯向量结果
+        # 双路都失败 → 拒绝
+        if vector_failed and bm25_failed:
+            raise_error(
+                ErrorCode.VECTOR_STORE_ERROR,
+                msg="向量检索和关键词检索均失败，请稍后重试",
+            )
+
+        # vector 失败，仅用 BM25（新增的对称降级）
+        if vector_failed:
+            candidates = [
+                {
+                    "document_id": h["document_id"],
+                    "chunk_id": h["chunk_id"],
+                    "title": h["title"],
+                    "content": h["content"],
+                    "score": h["bm25_score"],
+                    "bm25_score": h["bm25_score"],
+                    "retrieval_source": "bm25",
+                }
+                for h in bm25_hits
+            ]
+            meta = HybridRetrievalMetadata(
+                mode="hybrid",
+                fusion="rrf",
+                rrf_k=rrf_k,
+                vector_store=self._vector_store_name,
+                keyword_search=self._keyword_search_name,
+                vector_top_k=vector_top_k,
+                bm25_top_k=bm25_top_k,
+                vector_count=0,
+                bm25_count=len(bm25_hits),
+                degraded=True,
+                degraded_reason="vector search failed",
+            )
+            logger.warning("HYBRID_SEARCH_DEGRADED | kb_id=%s | reason=vector_failed", effective_kb_id)
+            return candidates, meta
+
+        # BM25 失败，仅用 vector（现有逻辑对称改造）
+        if bm25_failed:
             candidates = [
                 {
                     "document_id": h["document_id"],
@@ -637,7 +712,7 @@ class RAGService:
                     "vector_score": h["score"],
                     "retrieval_source": "vector",
                 }
-                for h in vector_hits or []
+                for h in vector_hits
             ]
             meta = HybridRetrievalMetadata(
                 mode="hybrid",
@@ -647,41 +722,37 @@ class RAGService:
                 keyword_search=self._keyword_search_name,
                 vector_top_k=vector_top_k,
                 bm25_top_k=bm25_top_k,
-                vector_count=len(vector_hits) if vector_hits else 0,
+                vector_count=len(vector_hits),
                 bm25_count=0,
                 degraded=True,
                 degraded_reason="bm25 search failed",
             )
             logger.warning("HYBRID_SEARCH_DEGRADED | kb_id=%s | reason=bm25_failed", effective_kb_id)
-        else:
-            # 正常 RRF 融合
-            fused = self._hybrid_search.fuse_rrf(
-                vector_chunks=vector_hits,
-                bm25_chunks=bm25_hits,
-                top_n=settings.hybrid_top_n,
-            )
-            logger.info(
-                "RRF_FUSION_SUCCESS | kb_id=%s | vector_count=%d | bm25_count=%d | fused_count=%d",
-                effective_kb_id,
-                len(vector_hits),
-                len(bm25_hits),
-                len(fused),
-            )
-            candidates = fused
-            meta = HybridRetrievalMetadata(
-                mode="hybrid",
-                fusion="rrf",
-                rrf_k=rrf_k,
-                vector_store=self._vector_store_name,
-                keyword_search=self._keyword_search_name,
-                vector_top_k=vector_top_k,
-                bm25_top_k=bm25_top_k,
-                vector_count=len(vector_hits),
-                bm25_count=len(bm25_hits),
-                fused_count=len(fused),
-            )
+            return candidates, meta
 
-        return candidates, meta
+        # 两路都成功 → RRF 融合
+        fused = self._hybrid_search.fuse_rrf(
+            vector_chunks=vector_hits,
+            bm25_chunks=bm25_hits,
+            top_n=settings.hybrid_top_n,
+        )
+        logger.info(
+            "RRF_FUSION_SUCCESS | kb_id=%s | vector_count=%d | bm25_count=%d | fused_count=%d",
+            effective_kb_id, len(vector_hits), len(bm25_hits), len(fused),
+        )
+        meta = HybridRetrievalMetadata(
+            mode="hybrid",
+            fusion="rrf",
+            rrf_k=rrf_k,
+            vector_store=self._vector_store_name,
+            keyword_search=self._keyword_search_name,
+            vector_top_k=vector_top_k,
+            bm25_top_k=bm25_top_k,
+            vector_count=len(vector_hits),
+            bm25_count=len(bm25_hits),
+            fused_count=len(fused),
+        )
+        return fused, meta
 
     async def _apply_rerank(
         self,
