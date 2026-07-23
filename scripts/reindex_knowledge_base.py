@@ -7,6 +7,9 @@ Usage:
   # Reindex specific documents
   python scripts/reindex_knowledge_base.py --kb-id <kb_id> --document-id <id1> --document-id <id2>
 
+  # Reindex and re-parse from original file (requires source_file_path)
+  python scripts/reindex_knowledge_base.py --kb-id <kb_id> --reparse
+
   # Override tenant (optional; derived from KB record if omitted)
   python scripts/reindex_knowledge_base.py --kb-id <kb_id> --tenant-id <tenant_id>
 """
@@ -36,6 +39,7 @@ async def _main(
     kb_id: str,
     tenant_id: Optional[str],
     document_ids: Optional[list[str]],
+    reparse: bool = False,
 ) -> None:
     keyword_search = (
         ElasticsearchKeywordSearchProvider()
@@ -95,14 +99,22 @@ async def _main(
                     keyword_search=keyword_search,
                 )
 
-                # b. Reset document status
+                # b. If --reparse and the document has a stored file, clear content
+                #    so index_existing_document will re-parse the original file.
+                if reparse and doc.source_file_path:
+                    doc.content = ""
+                    print(" [reparse scheduled]", end="", flush=True)
+                elif reparse and not doc.source_file_path:
+                    print(" [reparse skipped: no source_file_path]", end="", flush=True)
+
+                # c. Reset document status
                 doc.status = DocumentStatus.PROCESSING.value
                 doc.error_message = None
 
-                # c. Persist status change before dispatching task
+                # d. Persist status change before dispatching task
                 await session.commit()
 
-                # d. Submit Celery task
+                # e. Submit Celery task
                 index_document_task.delay(doc.id)
 
                 print(" [OK: task submitted]")
@@ -132,5 +144,11 @@ if __name__ == "__main__":
         metavar="DOCUMENT_ID",
         help="Document ID to reindex (repeatable); if omitted, all SUCCESS/FAILED docs are reindexed",
     )
+    parser.add_argument(
+        "--reparse",
+        action="store_true",
+        default=False,
+        help="重新从原文件解析（需 source_file_path 存在；仅对 multipart 上传的文档有效）",
+    )
     args = parser.parse_args()
-    asyncio.run(_main(args.kb_id, args.tenant_id, args.document_ids))
+    asyncio.run(_main(args.kb_id, args.tenant_id, args.document_ids, reparse=args.reparse))

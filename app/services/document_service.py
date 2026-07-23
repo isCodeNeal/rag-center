@@ -58,22 +58,56 @@ class DocumentService:
 
     # ----- 建记录（upload API）-----
     async def create_document_record(
-        self, req: UploadDocumentRequest, tenant_id: str
+        self,
+        req: UploadDocumentRequest | None,
+        tenant_id: str,
+        *,
+        # multipart 模式时传入
+        file_path: str | None = None,
+        source_filename: str | None = None,
+        source_type_override: str | None = None,
+        title_override: str | None = None,
+        kb_id_override: str | None = None,
     ) -> Document:
-        """校验 kb 归属，建 PROCESSING 记录并写入原文 content，commit 后返回。"""
-        kb = await self._kb_repo.get_for_tenant(req.kb_id, tenant_id)
-        if kb is None:
-            raise KnowledgeBaseNotFound(req.kb_id)
+        """校验 kb 归属，建 PROCESSING 记录，commit 后返回。
 
-        document = Document(
-            id=new_document_id(),
-            tenant_id=tenant_id,
-            kb_id=req.kb_id,
-            title=req.title,
-            source_type=req.source_type or "text",
-            status=DocumentStatus.PROCESSING.value,
-            content=req.content,
-        )
+        - JSON 模式：req 非 None，写入 content；file_path 等关键字参数均为 None。
+        - multipart 模式：req 为 None，由关键字参数提供 kb_id / title / file_path 等；
+          content 留空，由 Worker 的 index_existing_document 解析原文后填入。
+        """
+        # 统一取 kb_id
+        resolved_kb_id: str = kb_id_override if kb_id_override is not None else (req.kb_id if req else "")
+        kb = await self._kb_repo.get_for_tenant(resolved_kb_id, tenant_id)
+        if kb is None:
+            raise KnowledgeBaseNotFound(resolved_kb_id)
+
+        if req is not None:
+            # JSON 模式
+            document = Document(
+                id=new_document_id(),
+                tenant_id=tenant_id,
+                kb_id=req.kb_id,
+                title=req.title,
+                source_type=req.source_type or "text",
+                status=DocumentStatus.PROCESSING.value,
+                content=req.content or "",
+                source_file_path=None,
+                source_filename=None,
+            )
+        else:
+            # multipart 模式：content 留空，等 Worker 解析原文后填入
+            document = Document(
+                id=new_document_id(),
+                tenant_id=tenant_id,
+                kb_id=resolved_kb_id,
+                title=title_override or source_filename or "",
+                source_type=source_type_override or "text",
+                status=DocumentStatus.PROCESSING.value,
+                content="",
+                source_file_path=file_path,
+                source_filename=source_filename,
+            )
+
         await self._doc_repo.create(document)
         await self._session.commit()
         logger.info(
@@ -84,6 +118,9 @@ class DocumentService:
     # ----- 执行索引（Celery Task / reindex）-----
     async def index_existing_document(self, document_id: str) -> int:
         """读 document 原文，执行索引，更新 SUCCESS 或 FAILED。返回 chunk 数。
+
+        若 document.source_file_path 存在（multipart upload），先调用
+        prepare_document_content 解析原文件，将结果写入 content 后再索引。
 
         status 不是 PROCESSING 时直接 return 0，防止重复执行。
         """
@@ -100,6 +137,30 @@ class DocumentService:
             return 0
 
         try:
+            # 如果有原文件路径（multipart upload / reparse），先解析原文件
+            if document.source_file_path:
+                try:
+                    from app.services.document_ingestion import prepare_document_content  # noqa: PLC0415
+                    parsed = await prepare_document_content(
+                        content=None,
+                        file_path=document.source_file_path,
+                        filename=document.source_filename or document.title,
+                    )
+                    document.content = parsed.content
+                    document.source_type = parsed.source_type
+                    await self._session.commit()
+                    logger.info(
+                        "DOC_FILE_PARSED | document_id=%s | source_type=%s",
+                        document_id,
+                        parsed.source_type,
+                    )
+                except ImportError:
+                    # TODO: Agent1 负责实现 document_ingestion 模块；运行时会存在
+                    logger.warning(
+                        "DOC_INGESTION_NOT_AVAILABLE | document_id=%s | skipping parse",
+                        document_id,
+                    )
+
             chunk_count = await self._indexing.index_document(document, document.content)
             document.status = DocumentStatus.SUCCESS.value
             document.error_message = None
@@ -132,6 +193,8 @@ class DocumentService:
             chunk_count=counts.get(document.id, 0),
             created_at=document.created_at,
             updated_at=document.updated_at,
+            source_filename=document.source_filename,
+            source_type=document.source_type,
         )
 
     # ----- 删除 -----
@@ -155,7 +218,9 @@ class DocumentService:
         logger.info("DOC_DELETED | document_id=%s", document_id)
 
     # ----- 重试索引 -----
-    async def reindex(self, document_id: str, tenant_id: str) -> DocumentStatusData:
+    async def reindex(
+        self, document_id: str, tenant_id: str, *, reparse: bool = False
+    ) -> DocumentStatusData:
         document = await self._doc_repo.get_for_tenant(document_id, tenant_id)
         if document is None:
             raise DocumentNotFound(document_id)
@@ -171,9 +236,15 @@ class DocumentService:
             chunk_repository=self._chunk_repo,
             keyword_search=self._keyword_search,
         )
+        # reparse=True 且有原文件路径时，清空 content 让 index_existing_document 重新解析
+        if reparse and document.source_file_path:
+            document.content = ""
+            logger.info("DOC_REPARSE_SCHEDULED | document_id=%s", document_id)
         document.status = DocumentStatus.PROCESSING.value
         document.error_message = None
         await self._session.commit()
+        # commit 后 server_onupdate 会刷新 updated_at，需 refresh 避免 async 下懒加载报错
+        await self._session.refresh(document)
         counts = await self._chunk_repo.count_by_document_ids([document.id])
         return DocumentStatusData(
             document_id=document.id,
@@ -184,6 +255,8 @@ class DocumentService:
             chunk_count=counts.get(document.id, 0),
             created_at=document.created_at,
             updated_at=document.updated_at,
+            source_filename=document.source_filename,
+            source_type=document.source_type,
         )
 
     async def _mark_failed(self, document_id: str, error_message: str) -> None:

@@ -19,6 +19,23 @@ export function isTextFile(filename: string): boolean {
   return TEXT_EXTENSIONS.includes(getExtension(filename) as (typeof TEXT_EXTENSIONS)[number]);
 }
 
+// 支持的文本文件（可 readAsText → JSON upload）
+export function isTextUploadFile(file: File): boolean {
+  const ext = getExtension(file.name);
+  return ext === ".md" || ext === ".txt";
+}
+
+// 支持的二进制文件（走 FormData multipart upload）
+export function isBinaryUploadFile(file: File): boolean {
+  const ext = getExtension(file.name);
+  return ext === ".pdf" || ext === ".docx";
+}
+
+// 所有支持的上传格式
+export function isSupportedUploadFile(file: File): boolean {
+  return isTextUploadFile(file) || isBinaryUploadFile(file);
+}
+
 /** 用 FileReader 把文件读成 UTF-8 文本。 */
 export function readFileAsText(file: File): Promise<string> {
   return new Promise((resolve, reject) => {

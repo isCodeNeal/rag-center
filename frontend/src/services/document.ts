@@ -14,6 +14,14 @@ export function uploadDocument(
   );
 }
 
+export function uploadDocumentFile(formData: FormData): Promise<UploadDocumentData> {
+  return unwrap(
+    http.post<ApiResponse<UploadDocumentData>>("/v1/documents/upload", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    })
+  );
+}
+
 export function deleteDocument(documentId: string): Promise<null> {
   return unwrap(
     http.delete<ApiResponse<null>>(`/v1/documents/${encodeURIComponent(documentId)}`)

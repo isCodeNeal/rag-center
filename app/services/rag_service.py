@@ -342,6 +342,7 @@ class RAGService:
             raw_query=qp.raw_query,
             effective_query=qp.effective_query,
             search_query=qp.search_query,
+            strategy=qp.strategy,
             rewrite_latency_ms=qp.rewrite_latency_ms,
             degraded=qp.degraded,
             degraded_reason=qp.degraded_reason,

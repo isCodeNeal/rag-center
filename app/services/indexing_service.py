@@ -48,8 +48,14 @@ class IndexingService:
 
         返回写入的 chunk 数量。任何失败都会抛出 IndexingError。
         """
-        # 1. 解析为归一化后的纯文本
-        text = self._parser.parse(content, source_type=document.source_type)
+        # 1. 正文已在 document_ingestion（multipart）或 JSON upload 阶段解析就绪；
+        #    pdf/docx 等二进制类型不应再经 TextDocumentParser 二次 parse。
+        if self._parser.supports(document.source_type):
+            text = self._parser.parse(content, source_type=document.source_type)
+        else:
+            text = (content or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+        if not text:
+            raise IndexingError("document content is empty after parsing")
 
         # 2. 切分为多个 chunk（使用 Markdown 结构化切块器）
         md_splitter = MarkdownStructuredSplitter(

@@ -42,6 +42,8 @@ class ErrorCode(Enum):
     FEEDBACK_FAILED = (20020, "反馈写入失败，Langfuse 不可用或写入异常")
     FEEDBACK_INVALID = (20021, "log_id 与 trace_id 不匹配，或当前租户无权操作")
     SCORE_OUT_OF_RANGE = (20022, "score 必须在 1～5 之间")
+    DOCUMENT_PARSE_FAILED = (20023, "文档解析失败")
+    DOCUMENT_CONTENT_EMPTY = (20024, "文档内容为空")
 
     # ---- 数据库 / 存储 30000~39999 ----
     DB_ERROR = (30001, "数据库操作失败")

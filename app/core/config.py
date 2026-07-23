@@ -99,6 +99,10 @@ class Settings(BaseSettings):
     elasticsearch_analyzer: str = "ik_max_word"
     elasticsearch_search_analyzer: str = "ik_smart"
 
+    # ----- 文件上传存储 -----
+    document_storage_path: str = "./data/uploads"
+    document_max_size_mb: int = 20
+
     # ----- 检索模式与混合检索（RRF 融合）-----
     # retrieval_mode 默认检索模式："vector" / "bm25" / "hybrid"。
     retrieval_mode: str = "vector"

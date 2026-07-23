@@ -4,6 +4,7 @@ from __future__ import annotations
 from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
+
 from app.db.base import Base, TimestampMixin
 from app.models.enums import DocumentStatus
 from app.utils.id_generator import new_document_id
@@ -29,3 +30,7 @@ class Document(Base, TimestampMixin):
     content: Mapped[str] = mapped_column(Text, nullable=False, server_default="", default="")
     # 索引失败原因；仅 FAILED 时有值
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 文件上传时的存盘路径；JSON 文本 upload 为 null
+    source_file_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 原始文件名；JSON 文本 upload 为 null
+    source_filename: Mapped[str | None] = mapped_column(String(512), nullable=True)

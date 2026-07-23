@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/table";
 import { Link } from "react-router-dom";
 import { useUploadDocuments, type UploadItem } from "@/hooks/use-upload-documents";
+import { isBinaryUploadFile } from "@/utils/file";
 
 interface Props {
   kbId: string;
@@ -75,8 +76,8 @@ export function UploadDocuments({ kbId, onKbIdChange }: Props) {
       <CardHeader>
         <CardTitle>2. 上传文档</CardTitle>
         <CardDescription>
-          支持选择多个文件或整个文件夹（顺序逐个提交）。仅支持文本类文件（.txt / .md /
-          .csv / .json 等），其余文件会被标记为“跳过”。提交后由后台异步索引，可去列表页查看进度。
+          支持选择多个文件或整个文件夹（顺序逐个提交）。支持 .md / .txt（文本解析）和 .pdf /
+          .docx（二进制解析），其余文件会被标记为」跳过」。提交后由后台异步索引，可去列表页查看进度。
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -95,6 +96,7 @@ export function UploadDocuments({ kbId, onKbIdChange }: Props) {
             ref={fileInputRef}
             type="file"
             multiple
+            accept=".md,.txt,.pdf,.docx"
             className="hidden"
             onChange={onPick}
           />
@@ -102,6 +104,7 @@ export function UploadDocuments({ kbId, onKbIdChange }: Props) {
             ref={folderInputRef}
             type="file"
             multiple
+            accept=".md,.txt,.pdf,.docx"
             className="hidden"
             // @ts-expect-error 非标准属性，主流浏览器支持文件夹选择
             webkitdirectory=""
@@ -120,7 +123,16 @@ export function UploadDocuments({ kbId, onKbIdChange }: Props) {
         </div>
 
         {files.length > 0 && items.length === 0 && (
-          <p className="text-sm text-muted-foreground">已选择 {files.length} 个文件，点击“开始上传”。</p>
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">
+              已选择 {files.length} 个文件，点击「开始上传」。
+            </p>
+            {files.some((f) => isBinaryUploadFile(f)) && (
+              <p style={{ color: "#888", fontSize: "0.9em" }}>
+                包含 PDF / DOCX 文件，将在后台解析，稍大文件需等待索引完成。
+              </p>
+            )}
+          </div>
         )}
 
         {items.length > 0 && (

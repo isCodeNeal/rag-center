@@ -10,7 +10,8 @@ class UploadDocumentRequest(BaseModel):
     kb_id: str = Field(..., min_length=1, max_length=64)
     title: str = Field(..., min_length=1, max_length=512)
     # 第一阶段直接接受原始文本内容（.txt / .md 风格的纯文本）
-    content: str = Field(..., min_length=1)
+    # multipart upload 时 content 为空，此时由 Worker 解析原文件填入
+    content: str | None = Field(default=None, min_length=1)
     # 关于来源的可选提示；默认为纯文本
     source_type: str = Field(default="text", max_length=32)
 
@@ -35,3 +36,7 @@ class DocumentStatusData(BaseModel):
     chunk_count: int
     created_at: datetime
     updated_at: datetime
+    # 文件上传时的原始文件名；JSON 文本 upload 为 null
+    source_filename: str | None = None
+    # 来源类型；text / pdf / docx / markdown 等
+    source_type: str | None = None

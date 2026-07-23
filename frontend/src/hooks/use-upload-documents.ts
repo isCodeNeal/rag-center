@@ -1,7 +1,7 @@
 import * as React from "react";
-import { uploadDocument } from "@/services/document";
+import { uploadDocument, uploadDocumentFile } from "@/services/document";
 import { DocumentStatus } from "@/types/api";
-import { fileNameToTitle, isTextFile, readFileAsText } from "@/utils/file";
+import { fileNameToTitle, isBinaryUploadFile, isSupportedUploadFile, readFileAsText } from "@/utils/file";
 
 export type UploadItemStatus =
   | "pending"
@@ -59,23 +59,32 @@ export function useUploadDocuments() {
       for (const file of files) {
         const path = getPath(file);
 
-        if (!isTextFile(file.name)) {
-          update(path, { status: "skipped", error: "不支持的文件类型（仅支持文本类文件）" });
+        if (!isSupportedUploadFile(file)) {
+          update(path, { status: "skipped", error: "不支持的文件类型（仅支持 .md / .txt / .pdf / .docx）" });
           continue;
         }
 
         update(path, { status: "uploading" });
         try {
-          const content = await readFileAsText(file);
-          if (!content.trim()) {
-            update(path, { status: "failed", error: "文件内容为空" });
-            continue;
+          let data;
+          if (isBinaryUploadFile(file)) {
+            const formData = new FormData();
+            formData.append("file", file);
+            formData.append("kb_id", kbId);
+            formData.append("title", fileNameToTitle(file.name));
+            data = await uploadDocumentFile(formData);
+          } else {
+            const content = await readFileAsText(file);
+            if (!content.trim()) {
+              update(path, { status: "failed", error: "文件内容为空" });
+              continue;
+            }
+            data = await uploadDocument({
+              kb_id: kbId,
+              title: fileNameToTitle(file.name),
+              content,
+            });
           }
-          const data = await uploadDocument({
-            kb_id: kbId,
-            title: fileNameToTitle(file.name),
-            content,
-          });
           // 异步索引：收到 PROCESSING 即视为提交成功，真正索引由后台 Worker 完成。
           if (
             data.status === DocumentStatus.PROCESSING ||
